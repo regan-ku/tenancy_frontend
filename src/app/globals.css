@@ -1,26 +1,40 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ✅ CUSTOM COMPONENT CLASSES */
+@layer components {
+  /* Primary Button */
+  .btn-primary {
+    @apply bg-primary text-white font-semibold rounded-lg px-6 py-2.5 
+           transition-all duration-200 hover:bg-primary-dark 
+           focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 
+           disabled:opacity-50 disabled:cursor-not-allowed shadow-sm;
+  }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Outline/Secondary Button */
+  .btn-outline {
+    @apply bg-white text-slate-700 border border-slate-300 font-semibold rounded-lg px-6 py-2.5 
+           transition-all duration-200 hover:bg-slate-50 hover:border-slate-400 
+           focus:outline-none focus:ring-2 focus:ring-slate-200 focus:ring-offset-2 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* Input Field Base Style */
+  .input-base {
+    @apply w-full px-4 py-2.5 border border-slate-300 rounded-lg 
+           focus:ring-2 focus:ring-primary focus:border-primary outline-none 
+           transition-all duration-200 bg-white text-slate-900 placeholder-slate-400;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ✅ GLOBAL BASE STYLES */
+@layer base {
+  body {
+    @apply bg-surface-muted text-slate-800 antialiased;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-slate-900 font-semibold;
+  }
 }
