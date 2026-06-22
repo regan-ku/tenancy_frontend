@@ -195,7 +195,7 @@ export default function AgencyDirectorsPage() {
                             )}
                           </p>
                           <p className="text-xs text-slate-500">
-                            {director.email} • {director.phone}
+                            {director.email} • {director.phone_number}
                           </p>
                         </div>
                       </div>
