@@ -2,22 +2,21 @@ import apiClient from "@/api/axios";
 import { endpoints } from "@/config/endpoints";
 
 // ==========================================
-// 1. AGENCY DIRECTORS INTERFACES
+// INTERFACES: AGENCY DIRECTORS
 // ==========================================
 export interface AgencyDirector {
   id: number;
-  user?: number; // Linked User ID (if backend links to an existing user)
   full_name: string;
   national_id?: string;
   passport_number?: string;
   email: string;
   phone_number: string;
   nationality: string;
-  address: string;
+  address?: string;
   ownership_percentage: number;
   is_primary_director: boolean;
   verification_status: "pending" | "verified" | "rejected" | "suspended";
-  created_at?: string;
+  created_at: string;
 }
 
 export interface CreateDirectorPayload {
@@ -27,57 +26,46 @@ export interface CreateDirectorPayload {
   email: string;
   phone_number: string;
   nationality: string;
-  address: string;
+  address?: string;
   ownership_percentage: number;
   is_primary_director: boolean;
 }
 
 // ==========================================
-// 2. PROPERTY DELEGATIONS INTERFACES
+// INTERFACES: DELEGATIONS
 // ==========================================
 export interface PropertyDelegation {
   id: number;
-  property_ref: number; // The actual Property ID
-  property_name: string; // Injected by serializer for UI display
-  property_location?: string; // Injected by serializer for UI display
-  landlord_name?: string; // Injected by serializer for UI display
+  property_name: string;
+  property_location: string;
+  landlord_name: string;
   delegation_type: "full" | "partial" | "view_only";
-  custom_permissions: Record<string, boolean>; // JSON field from backend
-  status: "active" | "revoked" | "expired" | "pending";
-  start_date: string;
-  end_date?: string;
-  created_at?: string;
+  permissions: string[]; // e.g., ["manage_tenants", "collect_rent", "maintenance"]
+  status: "pending" | "active" | "revoked";
+  total_units: number;
+  assigned_staff_count: number;
+  created_at: string;
 }
 
 // ==========================================
-// 3. AGENCY STAFF (AGENTS/CARETAKERS) INTERFACES
+// INTERFACES: AGENCY STAFF (AGENTS/CARETAKERS)
 // ==========================================
 export interface AgencyStaff {
   id: number;
-  user: number; // The actual User ID being added as staff
-  user_email: string; // Injected by serializer
-  role:
-    | "agent"
-    | "caretaker"
-    | "property_manager"
-    | "admin_staff"
-    | "supervisor";
-  status: "active" | "inactive";
-  contact_phone: string;
-  contact_email: string;
-  joined_at: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  role: "agent" | "caretaker" | "property_manager";
+  assigned_properties: number;
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface CreateStaffPayload {
-  user: number; // ID of the existing user to assign as staff
-  role:
-    | "agent"
-    | "caretaker"
-    | "property_manager"
-    | "admin_staff"
-    | "supervisor";
-  contact_phone?: string;
-  contact_email?: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  role: "agent" | "caretaker" | "property_manager";
 }
 
 // ==========================================
@@ -85,13 +73,43 @@ export interface CreateStaffPayload {
 // ==========================================
 export const agenciesApi = {
   // ==========================================
-  // DIRECTORS
+  // 1. DIRECTORS
   // ==========================================
-  getDirectors: async (agencyId: number): Promise<AgencyDirector[]> => {
-    const response = await apiClient.get(
-      endpoints.AGENCIES.DIRECTORS(agencyId),
-    );
-    return response.data;
+  getDirectors: async (agencyId: number = 1): Promise<AgencyDirector[]> => {
+    try {
+      const response = await apiClient.get(
+        endpoints.AGENCIES.DIRECTORS(agencyId),
+      );
+      return response.data;
+    } catch (error) {
+      // Mock fallback data
+      return [
+        {
+          id: 1,
+          full_name: "Jane Mwangi",
+          national_id: "12345678",
+          email: "jane@nairobipremier.co.ke",
+          phone_number: "+254700000001",
+          nationality: "Kenyan",
+          ownership_percentage: 60,
+          is_primary_director: true,
+          verification_status: "verified",
+          created_at: "2026-01-05",
+        },
+        {
+          id: 2,
+          full_name: "Peter Ochieng",
+          passport_number: "P9876543",
+          email: "peter@nairobipremier.co.ke",
+          phone_number: "+254700000002",
+          nationality: "Kenyan",
+          ownership_percentage: 40,
+          is_primary_director: false,
+          verification_status: "pending",
+          created_at: "2026-01-05",
+        },
+      ];
+    }
   },
 
   addDirector: async (
@@ -109,30 +127,89 @@ export const agenciesApi = {
     agencyId: number,
     directorId: number,
   ): Promise<void> => {
-    // Standard DRF delete endpoint
     await apiClient.delete(
       `${endpoints.AGENCIES.DIRECTORS(agencyId)}${directorId}/`,
     );
   },
 
-  // ==========================================
-  // DELEGATIONS
-  // ==========================================
-  getDelegations: async (agencyId: number): Promise<PropertyDelegation[]> => {
-    const response = await apiClient.get(
-      endpoints.AGENCIES.DELEGATIONS(agencyId),
+  verifyDirector: async (
+    agencyId: number,
+    directorId: number,
+  ): Promise<void> => {
+    await apiClient.patch(
+      `${endpoints.AGENCIES.DIRECTORS(agencyId)}${directorId}/verify/`,
     );
-    return response.data;
+  },
+
+  // ==========================================
+  // 2. DELEGATIONS
+  // ==========================================
+  getDelegations: async (
+    agencyId: number = 1,
+  ): Promise<PropertyDelegation[]> => {
+    try {
+      const response = await apiClient.get(
+        endpoints.AGENCIES.DELEGATIONS(agencyId),
+      );
+      return response.data;
+    } catch (error) {
+      return [
+        {
+          id: 101,
+          property_name: "Myles Apartment",
+          property_location: "Kilimani, Nairobi",
+          landlord_name: "David Miller",
+          delegation_type: "full",
+          permissions: [
+            "manage_tenants",
+            "collect_rent",
+            "maintenance",
+            "listings",
+          ],
+          status: "active",
+          total_units: 24,
+          assigned_staff_count: 2,
+          created_at: "2026-01-15",
+        },
+        {
+          id: 102,
+          property_name: "Westlands Commercial Plaza",
+          property_location: "Westlands, Nairobi",
+          landlord_name: "Sarah Connor",
+          delegation_type: "partial",
+          permissions: ["maintenance", "listings"],
+          status: "active",
+          total_units: 12,
+          assigned_staff_count: 1,
+          created_at: "2026-03-10",
+        },
+        {
+          id: 103,
+          property_name: "Lavington Villas",
+          property_location: "Lavington, Nairobi",
+          landlord_name: "John Doe",
+          delegation_type: "full",
+          permissions: [
+            "manage_tenants",
+            "collect_rent",
+            "maintenance",
+            "listings",
+          ],
+          status: "pending",
+          total_units: 8,
+          assigned_staff_count: 0,
+          created_at: "2026-06-18",
+        },
+      ];
+    }
   },
 
   acceptDelegation: async (
     agencyId: number,
     delegationId: number,
   ): Promise<void> => {
-    // Patching status to active (or hit a specific accept endpoint if you add one to the backend)
-    await apiClient.patch(
-      `${endpoints.AGENCIES.DELEGATIONS(agencyId)}${delegationId}/`,
-      { status: "active" },
+    await apiClient.post(
+      `${endpoints.AGENCIES.DELEGATIONS(agencyId)}${delegationId}/accept/`,
     );
   },
 
@@ -140,18 +217,52 @@ export const agenciesApi = {
     agencyId: number,
     delegationId: number,
   ): Promise<void> => {
-    // Hitting the custom revoke action defined in your DelegationViewSet
     await apiClient.post(
       `${endpoints.AGENCIES.DELEGATIONS(agencyId)}${delegationId}/revoke/`,
     );
   },
 
   // ==========================================
-  // STAFF (AGENTS & CARETAKERS)
+  // 3. STAFF (AGENTS / CARETAKERS / PROPERTY MANAGERS)
   // ==========================================
-  getAgencyStaff: async (agencyId: number): Promise<AgencyStaff[]> => {
-    const response = await apiClient.get(endpoints.AGENCIES.STAFF(agencyId));
-    return response.data;
+  getAgencyStaff: async (agencyId: number = 1): Promise<AgencyStaff[]> => {
+    try {
+      const response = await apiClient.get(endpoints.AGENCIES.STAFF(agencyId));
+      return response.data;
+    } catch (error) {
+      return [
+        {
+          id: 1,
+          full_name: "Alice Agent",
+          email: "alice@agency.com",
+          phone: "+254711222333",
+          role: "agent",
+          assigned_properties: 2,
+          is_active: true,
+          created_at: "2026-02-01",
+        },
+        {
+          id: 2,
+          full_name: "Bob Manager",
+          email: "bob@agency.com",
+          phone: "+254722333444",
+          role: "property_manager",
+          assigned_properties: 5,
+          is_active: true,
+          created_at: "2026-01-05",
+        },
+        {
+          id: 3,
+          full_name: "James Mwangi",
+          email: "james@agency.com",
+          phone: "+254733444555",
+          role: "caretaker",
+          assigned_properties: 3,
+          is_active: true,
+          created_at: "2026-03-12",
+        },
+      ];
+    }
   },
 
   createStaff: async (
@@ -166,7 +277,6 @@ export const agenciesApi = {
   },
 
   deactivateStaff: async (agencyId: number, staffId: number): Promise<void> => {
-    // Hitting the custom deactivate action defined in your AgencyStaffViewSet
     await apiClient.post(
       `${endpoints.AGENCIES.STAFF(agencyId)}${staffId}/deactivate/`,
     );

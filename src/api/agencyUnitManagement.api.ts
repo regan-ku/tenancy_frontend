@@ -52,6 +52,8 @@ export interface UnitMedia {
   display_order: number;
   is_primary: boolean;
   created_at: string;
+  unit_id: number | null;
+  unit_group_id: number | null;
 }
 
 export interface TenantFinancialInfo {
@@ -61,6 +63,7 @@ export interface TenantFinancialInfo {
   tenant_phone: string;
   unit_code: string;
   rent_amount: number;
+  property_name: string;
   deposit_amount: number;
   service_charge: number;
   balance_due: number;
@@ -83,67 +86,61 @@ export interface TenantFinancialInfo {
 // API METHODS
 // ==========================================
 export const agencyUnitManagementApi = {
-  // Unit Groups
+  // ==========================================
+  // UNIT GROUPS
+  // ==========================================
   getUnitGroups: async (propertyId: number): Promise<UnitGroup[]> => {
     try {
       const response = await apiClient.get(
         endpoints.PROPERTIES.UNIT_GROUPS(propertyId),
       );
-      return response.data;
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
     } catch (error) {
-      // Mock data
-      return [
-        {
-          id: 1,
-          name: "Block A",
-          description: "Two bedroom units",
-          unit_type: "two_bedroom",
-          floor_range: "1-3",
-          billing_cycle: "monthly",
-          billing_date: 5,
-          base_rent_amount: 45000,
-          service_charge: 2000,
-          deposit_amount: 90000,
-          currency: "KES",
-          capacity: 12,
-          allows_pets_override: null,
-          is_active: true,
-          cover_photo: "/media/unit-groups/block-a.jpg",
-          units_count: 12,
-        },
-      ];
+      console.error("Failed to fetch unit groups:", error);
+      return [];
     }
   },
 
-  // Units
+  updateUnitGroup: async (
+    propertyId: number,
+    groupId: number,
+    data: FormData | Partial<UnitGroup>,
+  ): Promise<UnitGroup> => {
+    const isFormData = data instanceof FormData;
+    const response = await apiClient.patch(
+      endpoints.PROPERTIES.UNIT_GROUP_DETAIL(propertyId, groupId),
+      data,
+      isFormData ? { headers: { "Content-Type": "multipart/form-data" } } : {},
+    );
+    return response.data;
+  },
+
+  // ✅ NEW: DELETE UNIT GROUP (Backend enforces: cannot delete if occupied units exist)
+  deleteUnitGroup: async (
+    propertyId: number,
+    groupId: number,
+  ): Promise<void> => {
+    await apiClient.delete(
+      endpoints.PROPERTIES.UNIT_GROUP_DETAIL(propertyId, groupId),
+    );
+  },
+
+  // ==========================================
+  // UNITS
+  // ==========================================
   getUnits: async (propertyId: number): Promise<Unit[]> => {
     try {
       const response = await apiClient.get(
         endpoints.PROPERTIES.UNITS(propertyId),
       );
-      return response.data;
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
     } catch (error) {
-      return [
-        {
-          id: 101,
-          unit_code: "A-101",
-          unit_type: "two_bedroom",
-          floor_number: 1,
-          rent_amount: 45000,
-          deposit_amount: 90000,
-          service_charge: 2000,
-          currency: "KES",
-          billing_cycle: "monthly",
-          billing_date: 5,
-          status: "occupied",
-          allows_pets: false,
-          parking_spaces: 1,
-          cover_photo: "/media/units/a-101.jpg",
-          created_at: "2026-01-15",
-          unit_group_id: 1,
-          unit_group_name: "Block A",
-        },
-      ];
+      console.error("Failed to fetch units:", error);
+      return [];
     }
   },
 
@@ -159,39 +156,121 @@ export const agencyUnitManagementApi = {
     return response.data;
   },
 
-  // Unit Media
+  // ✅ NEW: ADD UNIT TO EXISTING GROUP (Inherits all group details automatically)
+  addUnitToGroup: async (
+    propertyId: number,
+    groupId: number,
+    floorNumber: number,
+  ): Promise<Unit> => {
+    const response = await apiClient.post(
+      endpoints.PROPERTIES.UNITS(propertyId),
+      {
+        unit_group: groupId,
+        floor_number: floorNumber,
+      },
+    );
+    return response.data;
+  },
+
+  // ✅ NEW: DELETE UNIT (Backend enforces: cannot delete if unit is occupied)
+  deleteUnit: async (propertyId: number, unitId: number): Promise<void> => {
+    await apiClient.delete(
+      endpoints.PROPERTIES.UNIT_DETAIL(propertyId, unitId),
+    );
+  },
+
+  // ==========================================
+  // MEDIA
+  // ==========================================
+  getPropertyMedia: async (propertyId: number): Promise<UnitMedia[]> => {
+    try {
+      const response = await apiClient.get(
+        endpoints.PROPERTIES.MEDIA(propertyId),
+      );
+      const mediaArray = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+      return mediaArray.map((m: any) => ({
+        id: m.id,
+        media_type: m.media_type === "video" ? "video" : "image",
+        file: m.file || "",
+        url: m.file || m.url || "",
+        caption: m.caption || "",
+        display_order: m.display_order || 0,
+        is_primary: m.is_primary || false,
+        created_at: m.created_at || "",
+        unit_id: m.unit || null,
+        unit_group_id: m.unit_group || null,
+      }));
+    } catch (error) {
+      console.error("Failed to fetch property media:", error);
+      return [];
+    }
+  },
+
   getUnitMedia: async (
     propertyId: number,
     unitId: number,
   ): Promise<UnitMedia[]> => {
     try {
       const response = await apiClient.get(
-        endpoints.PROPERTIES.MEDIA_DETAIL(propertyId, unitId),
+        endpoints.PROPERTIES.MEDIA(propertyId),
       );
-      return response.data;
+      const mediaArray = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+      return mediaArray
+        .filter(
+          (m: any) => m.unit === unitId || String(m.unit) === String(unitId),
+        )
+        .map((m: any) => ({
+          id: m.id,
+          media_type: m.media_type === "video" ? "video" : "image",
+          file: m.file || "",
+          url: m.file || m.url || "",
+          caption: m.caption || "",
+          display_order: m.display_order || 0,
+          is_primary: m.is_primary || false,
+          created_at: m.created_at || "",
+          unit_id: m.unit || null,
+          unit_group_id: m.unit_group || null,
+        }));
     } catch (error) {
       return [];
     }
   },
 
-  uploadUnitMedia: async (
+  uploadMedia: async (
     propertyId: number,
-    unitId: number,
     file: File,
     mediaType: "image" | "video",
+    target: { unit_id?: number; unit_group_id?: number },
   ): Promise<UnitMedia> => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("media_type", mediaType);
+    if (target.unit_id) formData.append("unit", target.unit_id.toString());
+    if (target.unit_group_id)
+      formData.append("unit_group", target.unit_group_id.toString());
 
     const response = await apiClient.post(
       endpoints.PROPERTIES.MEDIA(propertyId),
       formData,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-      },
+      { headers: { "Content-Type": "multipart/form-data" } },
     );
-    return response.data;
+    const m = response.data;
+    return {
+      id: m.id,
+      media_type: m.media_type === "video" ? "video" : "image",
+      file: m.file || "",
+      url: m.file || m.url || "",
+      caption: m.caption || "",
+      display_order: m.display_order || 0,
+      is_primary: m.is_primary || false,
+      created_at: m.created_at || "",
+      unit_id: m.unit || null,
+      unit_group_id: m.unit_group || null,
+    };
   },
 
   setPrimaryMedia: async (
@@ -210,42 +289,22 @@ export const agencyUnitManagementApi = {
     );
   },
 
-  // Tenant Financials
+  // ==========================================
+  // TENANCY FINANCIALS
+  // ==========================================
   getTenantFinancials: async (
     propertyId: number,
   ): Promise<TenantFinancialInfo[]> => {
     try {
       const response = await apiClient.get(
-        `/api/properties/${propertyId}/tenant-financials/`,
+        `${endpoints.PROPERTIES.DETAIL(propertyId)}tenant-financials/`,
       );
-      return response.data;
+      return Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
     } catch (error) {
-      return [
-        {
-          tenant_id: 1001,
-          tenant_name: "John Doe",
-          tenant_email: "john@email.com",
-          tenant_phone: "+254712345678",
-          unit_code: "A-101",
-          rent_amount: 45000,
-          deposit_amount: 90000,
-          service_charge: 2000,
-          balance_due: 0,
-          arrears: 0,
-          last_payment_date: "2026-06-05",
-          last_payment_amount: 47000,
-          next_billing_date: "2026-07-05",
-          tenancy_status: "active",
-          tenancy_start_date: "2026-01-01",
-          tenancy_end_date: "2026-12-31",
-          next_of_kin: {
-            full_name: "Jane Doe",
-            relationship: "Spouse",
-            phone_number: "+254722333444",
-            city: "Nairobi",
-          },
-        },
-      ];
+      console.error("❌ FAILED TO FETCH TENANT FINANCIALS:", error);
+      return [];
     }
   },
 };

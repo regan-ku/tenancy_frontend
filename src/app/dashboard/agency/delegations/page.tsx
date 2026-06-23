@@ -8,8 +8,12 @@ export default function AgencyDelegationsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "pending" | "active">("all");
 
+  // ✅ Mock Agency ID (In production, this comes from the user's agency profile)
+  const mockAgencyId = 1;
+
   useEffect(() => {
-    agenciesApi.getDelegations().then((data) => {
+    // ✅ FIX: Pass the agencyId to getDelegations
+    agenciesApi.getDelegations(mockAgencyId).then((data) => {
       setDelegations(data);
       setLoading(false);
     });
@@ -21,7 +25,9 @@ export default function AgencyDelegationsPage() {
         "Accept this delegation? You will assume operational control based on the defined permissions.",
       )
     ) {
-      await agenciesApi.acceptDelegation(id);
+      // ✅ FIX: Pass both agencyId and delegationId to acceptDelegation
+      await agenciesApi.acceptDelegation(mockAgencyId, id);
+
       setDelegations(
         delegations.map((d) => (d.id === id ? { ...d, status: "active" } : d)),
       );

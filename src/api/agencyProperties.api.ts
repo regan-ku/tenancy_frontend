@@ -2,7 +2,7 @@ import apiClient from "@/api/axios";
 import { endpoints } from "@/config/endpoints";
 
 // ==========================================
-// INTERFACES (Expanded to match backend Property model)
+// INTERFACES
 // ==========================================
 export interface AgencyProperty {
   id: number;
@@ -30,8 +30,6 @@ export interface AgencyPropertyDetail extends AgencyProperty {
   number_of_floors: number;
   total_units_capacity: number;
   is_single_unit_property: boolean;
-
-  // Amenities
   has_water: boolean;
   has_electricity: boolean;
   has_internet: boolean;
@@ -42,8 +40,6 @@ export interface AgencyPropertyDetail extends AgencyProperty {
   has_swimming_pool: boolean;
   allows_pets: boolean;
   parking_spaces: number;
-
-  // Location (Nested object from backend)
   location_details: {
     estate: string;
     street: string;
@@ -52,13 +48,23 @@ export interface AgencyPropertyDetail extends AgencyProperty {
     region: string;
     postal_code: string;
     landmark: string;
+    latitude?: number | string;
+    longitude?: number | string;
   };
-
-  // Marketplace & Status
   listing_type: string;
   is_published: boolean;
   is_active: boolean;
   cover_photo: string;
+}
+
+export interface PropertyMedia {
+  id: number;
+  media_type: string;
+  file: string;
+  url: string;
+  caption: string;
+  display_order: number;
+  created_at: string;
 }
 
 // ==========================================
@@ -154,8 +160,6 @@ export const agencyPropertiesApi = {
             hasFullAccess || customPerms.collect_payments !== false,
         },
         status: prop.is_active ? "active" : "inactive",
-
-        // ✅ Map all the new detailed fields
         description: prop.description || "",
         property_category: prop.property_category || "",
         property_sub_type: prop.property_sub_type || "",
@@ -184,16 +188,123 @@ export const agencyPropertiesApi = {
     }
   },
 
-  // ✅ NEW: Update Property Method
+  // ✅ FIX: Prevent overwriting the 'location' key with undefined
   updateProperty: async (id: number, data: any): Promise<any> => {
-    // The backend PropertySerializer expects 'location' as a nested object for updates
-    const payload = { ...data, location: data.location_details };
-    delete payload.location_details;
+    const payload = { ...data };
+
+    // Only map location_details to location IF location_details exists AND location doesn't already exist
+    if (payload.location_details && !payload.location) {
+      payload.location = payload.location_details;
+      delete payload.location_details;
+    }
+
+    // If location_details was already deleted by the page component, payload.location is safely preserved!
 
     const response = await apiClient.patch(
       endpoints.PROPERTIES.DETAIL(id),
       payload,
     );
     return response.data;
+  },
+
+  getPropertyMedia: async (propertyId: number): Promise<PropertyMedia[]> => {
+    try {
+      const response = await apiClient.get(
+        endpoints.PROPERTIES.MEDIA(propertyId),
+      );
+      const mediaArray = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+
+      return mediaArray
+        .filter((m: any) => !m.unit && !m.unit_group)
+        .map((m: any) => ({
+          id: m.id,
+          media_type: m.media_type,
+          file: m.file || "",
+          url: m.file || m.url || "",
+          caption: m.caption || "",
+          display_order: m.display_order || 0,
+          created_at: m.created_at || "",
+        }));
+    } catch (error) {
+      console.error("Failed to fetch property media:", error);
+      return [];
+    }
+  },
+
+  uploadPropertyMedia: async (
+    propertyId: number,
+    file: File,
+    mediaType: string,
+    caption: string = "",
+  ): Promise<PropertyMedia> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("media_type", mediaType);
+    formData.append("caption", caption);
+
+    const response = await apiClient.post(
+      endpoints.PROPERTIES.MEDIA(propertyId),
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      },
+    );
+
+    const m = response.data;
+    return {
+      id: m.id,
+      media_type: m.media_type,
+      file: m.file || "",
+      url: m.file || m.url || "",
+      caption: m.caption || "",
+      display_order: m.display_order || 0,
+      created_at: m.created_at || "",
+    };
+  },
+
+  deletePropertyMedia: async (
+    propertyId: number,
+    mediaId: number,
+  ): Promise<void> => {
+    await apiClient.delete(
+      endpoints.PROPERTIES.MEDIA_DETAIL(propertyId, mediaId),
+    );
+  },
+
+  updateCoverPhoto: async (id: number, file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append("cover_photo", file);
+    const response = await apiClient.patch(
+      endpoints.PROPERTIES.DETAIL(id),
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      },
+    );
+    return response.data.cover_photo || "";
+  },
+
+  updateMediaCaption: async (
+    propertyId: number,
+    mediaId: number,
+    caption: string,
+  ): Promise<void> => {
+    await apiClient.patch(
+      endpoints.PROPERTIES.MEDIA_DETAIL(propertyId, mediaId),
+      { caption },
+    );
+  },
+
+  setCoverFromMedia: async (
+    propertyId: number,
+    mediaUrl: string,
+  ): Promise<string> => {
+    const response = await fetch(mediaUrl);
+    const blob = await response.blob();
+    const filename = mediaUrl.split("/").pop() || "cover.jpg";
+    const file = new File([blob], filename, { type: blob.type });
+    return await agencyPropertiesApi.updateCoverPhoto(propertyId, file);
   },
 };
