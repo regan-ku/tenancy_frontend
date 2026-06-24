@@ -1,21 +1,25 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, Suspense } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   useApplicationWizardStore,
   ApplicationType,
 } from "@/store/applicationWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import ApplicationWizardGuard from "@/guards/ApplicationwizardGuard";
+import apiClient from "@/api/axios"; // ✅ Added for profile fetch
+import { endpoints } from "@/config/endpoints"; // ✅ Added for profile fetch
 
-// Step Components
+import { useWizardLock } from "@/hooks/useWizardLock";
+
 import StepApplicationDetails from "@/modules/applications/wizard/steps/StepApplicationDetails";
 import StepTermsAndSubmit from "@/modules/applications/wizard/steps/StepTermsAndSubmit";
 
-export default function ApplicationWizardPage() {
+function ApplicationWizardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { user } = useAuthStore();
 
   const {
@@ -27,25 +31,91 @@ export default function ApplicationWizardPage() {
     isSubmitting,
   } = useApplicationWizardStore();
 
-  // Initialize wizard from URL params and auto-populate profile data
+  useWizardLock(true);
+
   useEffect(() => {
-    const type = searchParams.get("type") as ApplicationType | null;
-    const propertyId = searchParams.get("property");
-    const unitGroupId = searchParams.get("unit_group");
-
-    if (type) setApplicationType(type);
-    if (propertyId) updateFormData({ propertyId: Number(propertyId) });
-    if (unitGroupId) updateFormData({ unitGroupId: Number(unitGroupId) });
-
-    // Auto-populate from Auth Store
-    if (user && !useApplicationWizardStore.getState().formData.full_name) {
-      updateFormData({
-        full_name: (user as any).full_name || "",
-        phone_number: (user as any).phone_number || (user as any).phone || "",
-        email: (user as any).email || "",
-      });
+    // 1. Extract Application Type
+    let type = searchParams.get("type") as ApplicationType | null;
+    if (!type) {
+      if (pathname.includes("/transfer")) type = "transfer";
+      else if (pathname.includes("/eviction")) type = "eviction";
+      else type = "rental";
     }
-  }, [searchParams, user, setApplicationType, updateFormData]);
+    if (type) setApplicationType(type);
+
+    // 2. Extract Property & Unit IDs from URL
+    const propertyId = searchParams.get("property_id");
+    const unitGroupId = searchParams.get("unit_group_id");
+
+    const urlUpdates: any = {};
+    if (propertyId) urlUpdates.propertyId = Number(propertyId);
+    if (unitGroupId) urlUpdates.unitGroupId = Number(unitGroupId);
+
+    if (Object.keys(urlUpdates).length > 0) {
+      updateFormData(urlUpdates);
+    }
+
+    // 3. ✅ BULLETPROOF AUTO-FILL USER DATA
+    if (user) {
+      const currentFormData = useApplicationWizardStore.getState().formData;
+      const u = user as any;
+
+      let fullName = u.full_name || u.profile?.full_name || u.name || "";
+      let phone = u.phone_number || u.phone || u.profile?.phone_number || "";
+      let email = u.email || u.profile?.email || "";
+
+      // 🚨 CRITICAL FIX: If the login response didn't include profile data, fetch it!
+      if (!fullName || !phone || !email) {
+        apiClient
+          .get(endpoints.PROFILE.ME)
+          .then((res) => {
+            const profileData = res.data;
+            const profileUpdates: any = {};
+
+            if (!fullName && profileData.full_name) {
+              profileUpdates.full_name = profileData.full_name;
+              fullName = profileData.full_name;
+            }
+            if (!phone && profileData.phone_number) {
+              profileUpdates.phone_number = profileData.phone_number;
+              phone = profileData.phone_number;
+            }
+            if (!email && profileData.email) {
+              profileUpdates.email = profileData.email;
+              email = profileData.email;
+            }
+
+            // Update the wizard form
+            if (Object.keys(profileUpdates).length > 0) {
+              updateFormData(profileUpdates);
+            }
+
+            // ✅ Update the global auth store so other components have the data too
+            useAuthStore.getState().setUser({
+              ...u,
+              full_name: profileData.full_name || u.full_name,
+              phone_number: profileData.phone_number || u.phone_number,
+              email: profileData.email || u.email,
+            });
+          })
+          .catch((err) => {
+            console.error("Failed to fetch profile for wizard", err);
+          });
+      } else {
+        // If we already have the data, just update the form if it's currently empty
+        const profileUpdates: any = {};
+        if (!currentFormData.full_name && fullName)
+          profileUpdates.full_name = fullName;
+        if (!currentFormData.phone_number && phone)
+          profileUpdates.phone_number = phone;
+        if (!currentFormData.email && email) profileUpdates.email = email;
+
+        if (Object.keys(profileUpdates).length > 0) {
+          updateFormData(profileUpdates);
+        }
+      }
+    }
+  }, [pathname, searchParams, user, setApplicationType, updateFormData]);
 
   const handleCancel = () => {
     if (
@@ -58,7 +128,44 @@ export default function ApplicationWizardPage() {
     }
   };
 
-  // ✅ UPDATED: Now a streamlined 2-step wizard
+  const handleNextStep = () => {
+    const store = useApplicationWizardStore.getState();
+
+    if (currentStep === 1) {
+      const errors: string[] = [];
+      if (!store.formData.target_unit_id)
+        errors.push("Please select a preferred floor/unit.");
+
+      if (store.applicationType === "rental") {
+        if (!store.formData.anticipated_move_in_date)
+          errors.push("Move-in date is required.");
+        if (!store.formData.employment_status)
+          errors.push("Employment status is required.");
+      } else if (store.applicationType === "transfer") {
+        if (!store.formData.anticipated_move_out_date)
+          errors.push("Current move-out date is required.");
+        if (!store.formData.anticipated_move_in_date)
+          errors.push("New move-in date is required.");
+        if (!store.formData.reason)
+          errors.push("Reason for transfer is required.");
+      } else if (store.applicationType === "eviction") {
+        if (!store.formData.anticipated_move_out_date)
+          errors.push("Move-out date is required.");
+        if (!store.formData.reason)
+          errors.push("Reason for notice is required.");
+      }
+
+      if (errors.length > 0) {
+        store.setShowStepValidation(true);
+        alert("Please fill in all required fields:\n• " + errors.join("\n• "));
+        return;
+      }
+    }
+
+    store.setShowStepValidation(false);
+    store.nextStep();
+  };
+
   const totalSteps = 2;
   const progress = (currentStep / totalSteps) * 100;
 
@@ -88,24 +195,37 @@ export default function ApplicationWizardPage() {
 
   return (
     <ApplicationWizardGuard>
-      <div className="min-h-screen bg-surface-muted py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Header & Progress */}
-          <div className="mb-8">
+      <div className="fixed inset-0 z-50 bg-slate-50 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 min-h-screen flex flex-col">
+          <div className="mb-8 flex-shrink-0">
             <div className="flex justify-between items-center mb-4">
-              <h1 className="text-2xl font-bold text-primary-dark">
+              <h1 className="text-2xl font-bold text-slate-800">
                 {getTitle()}
               </h1>
               <button
                 onClick={handleCancel}
-                className="text-sm text-slate-500 hover:text-red-500 font-medium"
+                className="text-sm text-red-500 hover:text-red-700 font-bold flex items-center gap-2 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
               >
-                Cancel Application
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="w-4 h-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+                Exit Wizard
               </button>
             </div>
             <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
               <div
-                className="bg-secondary h-2.5 rounded-full transition-all duration-500 ease-out"
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
@@ -117,25 +237,23 @@ export default function ApplicationWizardPage() {
             </div>
           </div>
 
-          {/* Step Content */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-8 min-h-[500px]">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-8 flex-grow">
             {renderStep()}
           </div>
 
-          {/* Footer Navigation */}
-          <div className="flex justify-between mt-6">
+          <div className="flex justify-between mt-6 flex-shrink-0 pb-8">
             <button
               onClick={() => useApplicationWizardStore.getState().prevStep()}
               disabled={currentStep === 1 || isSubmitting}
-              className="btn-outline px-6 py-2 disabled:opacity-50"
+              className="px-6 py-2 border border-slate-300 rounded-lg text-slate-700 font-medium disabled:opacity-50"
             >
               &larr; Back
             </button>
 
             <button
-              onClick={() => useApplicationWizardStore.getState().nextStep()}
+              onClick={handleNextStep}
               disabled={isSubmitting}
-              className="btn-primary px-8 py-2 disabled:opacity-70 flex items-center gap-2"
+              className="px-8 py-2 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-70 flex items-center gap-2"
             >
               {isSubmitting
                 ? "Processing..."
@@ -148,5 +266,19 @@ export default function ApplicationWizardPage() {
         </div>
       </div>
     </ApplicationWizardGuard>
+  );
+}
+
+export default function ApplicationWizardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-slate-500">
+          Loading Wizard...
+        </div>
+      }
+    >
+      <ApplicationWizardContent />
+    </Suspense>
   );
 }

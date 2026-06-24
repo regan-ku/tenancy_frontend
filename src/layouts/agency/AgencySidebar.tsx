@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image"; // ✅ Added for the logo image
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -20,7 +21,6 @@ const getDisplayName = (user: any) => {
 const getInitial = (user: any) => getDisplayName(user).charAt(0).toUpperCase();
 
 // ✅ FULLY UPDATED AGENCY NAV LINKS
-// Fixed routes to match the actual files we built, and added the missing Communications page.
 const navLinks = [
   {
     name: "Overview",
@@ -29,7 +29,7 @@ const navLinks = [
   },
   {
     name: "Managed Properties",
-    href: "/dashboard/agency/properties", // ✅ FIXED: Points to the properties page we built in Phase 2
+    href: "/dashboard/agency/properties",
     icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4",
   },
   {
@@ -39,7 +39,7 @@ const navLinks = [
   },
   {
     name: "Financials",
-    href: "/dashboard/agency/financials", // ✅ FIXED: Points to the financials page we built in Phase 3
+    href: "/dashboard/agency/financials",
     icon: "M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z",
   },
   {
@@ -59,7 +59,7 @@ const navLinks = [
   },
   {
     name: "Communications",
-    href: "/dashboard/agency/communications", // ✅ ADDED: The Campaigns & Inbox hub we built in Phase 6A
+    href: "/dashboard/agency/communications",
     icon: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z",
   },
 ];
@@ -81,9 +81,14 @@ export default function AgencySidebar({ isOpen, onClose }: SidebarProps) {
       {/* Logo Area */}
       <div className="h-16 flex items-center justify-between px-6 border-b border-slate-100">
         <Link href="/dashboard/agency" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-white font-bold">
-            T
-          </div>
+          {/* ✅ UPDATED: Replaced the "T" div with the actual logo image */}
+          <Image
+            src="/images/logo.png"
+            alt="Tennacy Logo"
+            width={32}
+            height={32}
+            className="rounded-lg object-contain"
+          />
           <span className="text-xl font-bold text-primary-dark">Tennacy</span>
           <span className="text-[10px] font-bold bg-secondary text-white px-1.5 py-0.5 rounded uppercase">
             Agency
@@ -148,9 +153,7 @@ export default function AgencySidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Bottom Section: Settings & User Card */}
       <div className="p-4 border-t border-slate-100 space-y-3">
-        {/* ✅ AGENCY SETTINGS LINK 
-             This is where the Settings page lives! 
-             It houses the Profile, Directors, Payment Accounts, and Audit Logs. */}
+        {/* ✅ AGENCY SETTINGS LINK */}
         <Link
           href="/dashboard/agency/settings"
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-primary-dark transition-all"

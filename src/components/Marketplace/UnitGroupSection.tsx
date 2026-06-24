@@ -38,7 +38,9 @@ export default function UnitGroupsSection({
 
   // ✅🚨 AUTHENTICATION GATEWAY: Handles routing based on login status
   const handleApplyClick = (groupId: number) => {
-    const applicationUrl = `/applications/rental?property_id=${propertyId}&unit_group_id=${groupId}`;
+    // ✅ CRITICAL FIX: URL now exactly matches your folder structure
+    // (src/app/marketplace/applications/wizard/page.tsx)
+    const applicationUrl = `/marketplace/applications/wizard?type=rental&property_id=${propertyId}&unit_group_id=${groupId}`;
 
     if (!isAuthenticated) {
       // Not logged in -> Send to login with a redirect back to the wizard
@@ -72,7 +74,7 @@ export default function UnitGroupsSection({
           // Calculate Estimated Move-in Cost
           const baseRent = parseFloat(group.base_rent_amount) || 0;
           const deposit = parseFloat(group.deposit_amount) || 0;
-          const serviceCharge = parseFloat(group.service_charge_amount) || 0;
+          const serviceCharge = parseFloat(group.service_charge) || 0;
           const estimatedTotal = baseRent + deposit + serviceCharge;
 
           const mainImage =
@@ -80,8 +82,7 @@ export default function UnitGroupsSection({
               ? getMediaUrl(images[0].file)
               : getMediaUrl(group.cover_photo);
 
-          // ✅ FIX: Format the UNIT TYPE (e.g., "one_bedroom" -> "One Bedroom")
-          // instead of using the user-inputted group name.
+          // Format the UNIT TYPE (e.g., "one_bedroom" -> "One Bedroom")
           const formattedUnitType = group.unit_type
             .replace(/_/g, " ")
             .replace(/\b\w/g, (l) => l.toUpperCase());
@@ -222,7 +223,7 @@ export default function UnitGroupsSection({
                   )}
                 </div>
 
-                {/* ✅ APPLY BUTTON (Now checks auth status and uses Unit Type) */}
+                {/* ✅ APPLY BUTTON (Now points to the correct marketplace wizard path) */}
                 <button
                   onClick={() => handleApplyClick(group.id)}
                   className="block w-full text-center bg-secondary hover:bg-secondary/90 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg hover:shadow-xl"

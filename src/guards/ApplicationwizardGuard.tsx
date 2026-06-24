@@ -10,20 +10,31 @@ export default function ApplicationWizardGuard({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { isAuthenticated, user, isLoading } = useAuthStore();
+  // ✅ FIX: Pull userState from the store to check the backend's ultimate source of truth
+  const { isAuthenticated, user, isLoading, userState } = useAuthStore();
 
   useEffect(() => {
     if (!isLoading) {
-      // 1. Must be logged in to apply
+      // ✅ BULLETPROOF CHECK:
+      // 1. Check userState (from /user-state/ endpoint - Ultimate Source of Truth)
+      // 2. Check user object (from /profile/me/ or login)
+      // 3. Fallback to false
+      const isProfileComplete =
+        userState?.profile_complete ??
+        user?.profile_complete ??
+        (user as any)?.profile?.profile_complete ??
+        false;
+
       if (!isAuthenticated) {
-        router.push("/login?redirect=/applications/wizard");
-      }
-      // 2. Must have a complete profile (Onboarding must be done)
-      else if (!user?.profile_complete) {
+        router.push("/login?redirect=/marketplace/applications/wizard");
+      } else if (!isProfileComplete) {
+        console.warn(
+          "⚠️ Redirecting to onboarding because profile_complete is falsy.",
+        );
         router.push("/onboarding");
       }
     }
-  }, [isAuthenticated, user, isLoading, router]);
+  }, [isAuthenticated, user, userState, isLoading, router]);
 
   if (isLoading) {
     return (
@@ -33,9 +44,15 @@ export default function ApplicationWizardGuard({
     );
   }
 
-  // If not authenticated or profile is incomplete, render nothing (redirecting)
-  if (!isAuthenticated || !user?.profile_complete) {
-    return null;
+  // Re-evaluate for the render return
+  const isProfileComplete =
+    userState?.profile_complete ??
+    user?.profile_complete ??
+    (user as any)?.profile?.profile_complete ??
+    false;
+
+  if (!isAuthenticated || !isProfileComplete) {
+    return null; // Render nothing while redirecting
   }
 
   return <>{children}</>;

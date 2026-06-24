@@ -280,7 +280,13 @@ export const propertiesApi = {
     const response = await apiClient.get(
       endpoints.PROPERTIES.UNITS(propertyId),
     );
-    return response.data;
+
+    // ✅ BULLETPROOF FIX: Handle both paginated ({ results: [] }) and plain array ([]) responses
+    if (Array.isArray(response.data)) {
+      return { results: response.data };
+    }
+
+    return response.data || { results: [] };
   },
   getUnitDetail: async (propertyId: number, unitId: number): Promise<Unit> => {
     const response = await apiClient.get(

@@ -12,7 +12,7 @@ import { endpoints } from "@/config/endpoints";
 interface UnitManagementTabProps {
   propertyId: number;
   canEdit?: boolean;
-  maxFloors?: number; // ✅ NEW: Max floors allowed for validation
+  maxFloors?: number; // ✅ Max floors allowed for validation
 }
 
 // ✅ Modern Status Badge Colors
@@ -26,7 +26,7 @@ const statusColors: Record<string, string> = {
 export default function UnitManagementTab({
   propertyId,
   canEdit = true,
-  maxFloors = 0, // ✅ NEW
+  maxFloors = 0,
 }: UnitManagementTabProps) {
   const [unitGroups, setUnitGroups] = useState<UnitGroup[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
@@ -109,7 +109,6 @@ export default function UnitManagementTab({
       alert("✅ Unit added successfully!");
     } catch (error: any) {
       console.error(error);
-      // ✅ Now shows the exact backend validation error (e.g., "Invalid floor number")
       const errorMsg =
         error?.response?.data?.detail ||
         error?.response?.data?.error ||
@@ -118,7 +117,6 @@ export default function UnitManagementTab({
     }
   };
 
-  // ✅ NEW: DELETE UNIT LOGIC
   const handleDeleteUnit = async (unitId: number, unitCode: string) => {
     if (
       !confirm(
@@ -133,7 +131,6 @@ export default function UnitManagementTab({
       alert("✅ Unit deleted successfully!");
     } catch (error: any) {
       console.error("Failed to delete unit:", error);
-      // ✅ Shows backend error if unit is occupied
       const errorMsg =
         error?.response?.data?.error ||
         error?.response?.data?.detail ||
@@ -169,15 +166,45 @@ export default function UnitManagementTab({
   };
 
   const safeUnits = Array.isArray(units) ? units : [];
-  const groupedUnits = safeUnits.reduce(
+
+  // ✅ BULLETPROOF GROUPING: Group by Unit Group ID instead of String Name
+  const unitsByGroupId = safeUnits.reduce(
     (acc, unit) => {
-      const groupName = unit.unit_group_name || "Ungrouped";
-      if (!acc[groupName]) acc[groupName] = [];
-      acc[groupName].push(unit);
+      const groupId = unit.unit_group_id; // This is the FK ID from the backend
+
+      if (!groupId) {
+        if (!acc["ungrouped"]) acc["ungrouped"] = [];
+        acc["ungrouped"].push(unit);
+      } else {
+        if (!acc[groupId]) acc[groupId] = [];
+        acc[groupId].push(unit);
+      }
       return acc;
     },
-    {} as Record<string, Unit[]>,
+    {} as Record<string | number, Unit[]>,
   );
+
+  // ✅ Map actual Unit Groups to their units using the ID
+  const groupsToRender: {
+    group: UnitGroup | null;
+    groupName: string;
+    units: Unit[];
+  }[] = unitGroups.map((group) => ({
+    group,
+    groupName: group.name,
+    units: unitsByGroupId[group.id] || [],
+  }));
+
+  // Add ungrouped units at the end if they exist
+  if (unitsByGroupId["ungrouped"] && unitsByGroupId["ungrouped"].length > 0) {
+    groupsToRender.push({
+      group: null,
+      groupName: "Ungrouped",
+      units: unitsByGroupId["ungrouped"],
+    });
+  }
+
+  const hasAnyData = unitGroups.length > 0 || safeUnits.length > 0;
 
   if (loading)
     return (
@@ -197,7 +224,7 @@ export default function UnitManagementTab({
       />
 
       <div className="space-y-6">
-        {unitGroups.length === 0 && Object.keys(groupedUnits).length === 0 ? (
+        {!hasAnyData ? (
           <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
             <p className="text-slate-500 text-lg font-medium">
               No unit groups or units defined yet.
@@ -207,9 +234,8 @@ export default function UnitManagementTab({
             </p>
           </div>
         ) : (
-          Object.entries(groupedUnits).map(([groupName, groupUnits]) => {
-            const group = unitGroups.find((g) => g.name === groupName) || null;
-
+          // ✅ FIX: Iterate over groupsToRender instead of just the units
+          groupsToRender.map(({ group, groupName, units: groupUnits }) => {
             return (
               <div
                 key={groupName}
@@ -223,7 +249,7 @@ export default function UnitManagementTab({
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {group
-                        ? `${group.unit_type.replace("_", " ")} • ${group.units_count || group.capacity} Units`
+                        ? `${group.unit_type.replace("_", " ")} • ${group.units_count || group.capacity || groupUnits.length} Units`
                         : "Unassigned Units"}
                     </p>
                   </div>
@@ -251,144 +277,154 @@ export default function UnitManagementTab({
 
                 {/* Units Grid */}
                 <div className="p-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {groupUnits.map((unit) => {
-                      const displayCover =
-                        unit.cover_photo || group?.cover_photo || "";
-                      const isOccupied = unit.status === "occupied";
+                  {groupUnits.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 text-sm border border-dashed border-slate-200 rounded-lg">
+                      No units in this group yet. Click{" "}
+                      <strong>"+ Add Unit"</strong> to create one.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {groupUnits.map((unit) => {
+                        const displayCover =
+                          unit.cover_photo || group?.cover_photo || "";
+                        const isOccupied = unit.status === "occupied";
 
-                      return (
-                        <div
-                          key={unit.id}
-                          className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
-                        >
-                          {/* Image Area */}
-                          <div className="h-32 bg-slate-100 relative group">
-                            {displayCover ? (
-                              <img
-                                src={displayCover}
-                                alt={unit.unit_code}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">
-                                No Image
-                              </div>
-                            )}
+                        return (
+                          <div
+                            key={unit.id}
+                            className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
+                          >
+                            {/* Image Area */}
+                            <div className="h-32 bg-slate-100 relative group">
+                              {displayCover ? (
+                                <img
+                                  src={displayCover}
+                                  alt={unit.unit_code}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300 text-xs">
+                                  No Image
+                                </div>
+                              )}
 
-                            <span
-                              className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide ${statusColors[unit.status] || statusColors.available}`}
-                            >
-                              {unit.status}
-                            </span>
-
-                            {canEdit && !isOccupied && (
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <button
-                                  onClick={() => {
-                                    if (unitCoverInputRef.current) {
-                                      setActiveUnitIdForCover(unit.id);
-                                      unitCoverInputRef.current.click();
-                                    }
-                                  }}
-                                  disabled={uploadingUnitCover === unit.id}
-                                  className="px-3 py-1.5 bg-white text-slate-800 text-xs font-bold rounded-lg shadow hover:bg-slate-100 flex items-center gap-1"
-                                >
-                                  {uploadingUnitCover === unit.id ? (
-                                    <div className="w-3 h-3 border-2 border-slate-800/30 border-t-slate-800 rounded-full animate-spin"></div>
-                                  ) : (
-                                    <>📷 Change Cover</>
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Content Area */}
-                          <div className="p-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <h4 className="font-bold text-slate-800 text-base">
-                                {unit.unit_code}
-                              </h4>
-                              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                                Floor {unit.floor_number}
+                              <span
+                                className={`absolute top-2 right-2 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wide ${statusColors[unit.status] || statusColors.available}`}
+                              >
+                                {unit.status}
                               </span>
-                            </div>
 
-                            <p className="text-xs text-slate-500 mb-3 capitalize">
-                              {unit.unit_type.replace("_", " ")}
-                            </p>
-
-                            <div className="space-y-1.5 text-xs text-slate-600 mb-4">
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Rent:</span>
-                                <span className="font-bold text-slate-800">
-                                  KES{" "}
-                                  {Number(unit.rent_amount).toLocaleString()}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Deposit:</span>
-                                <span className="font-medium">
-                                  KES{" "}
-                                  {Number(unit.deposit_amount).toLocaleString()}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Actions */}
-                            {canEdit && (
-                              <div className="space-y-2 pt-3 border-t border-slate-100">
-                                {isOccupied ? (
+                              {canEdit && !isOccupied && (
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                   <button
-                                    disabled
-                                    className="w-full py-2 bg-slate-100 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed flex items-center justify-center gap-1"
-                                  >
-                                    🔒 Occupied - Editing Locked
-                                  </button>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={() => setEditingUnit(unit)}
-                                      className="w-full py-2 border border-primary text-primary text-xs font-bold rounded-lg hover:bg-primary/5 transition-colors"
-                                    >
-                                      Edit Details
-                                    </button>
-
-                                    {/* ✅ NEW: DELETE UNIT BUTTON */}
-                                    <button
-                                      onClick={() =>
-                                        handleDeleteUnit(
-                                          unit.id,
-                                          unit.unit_code,
-                                        )
+                                    onClick={() => {
+                                      if (unitCoverInputRef.current) {
+                                        setActiveUnitIdForCover(unit.id);
+                                        unitCoverInputRef.current.click();
                                       }
-                                      className="w-full py-2 border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
-                                    >
-                                      🗑️ Delete Unit
-                                    </button>
+                                    }}
+                                    disabled={uploadingUnitCover === unit.id}
+                                    className="px-3 py-1.5 bg-white text-slate-800 text-xs font-bold rounded-lg shadow hover:bg-slate-100 flex items-center gap-1"
+                                  >
+                                    {uploadingUnitCover === unit.id ? (
+                                      <div className="w-3 h-3 border-2 border-slate-800/30 border-t-slate-800 rounded-full animate-spin"></div>
+                                    ) : (
+                                      <>📷 Change Cover</>
+                                    )}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
 
-                                    {unit.status === "available" && (
+                            {/* Content Area */}
+                            <div className="p-4">
+                              <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-slate-800 text-base">
+                                  {unit.unit_code}
+                                </h4>
+                                <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  Floor {unit.floor_number}
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-500 mb-3 capitalize">
+                                {unit.unit_type.replace("_", " ")}
+                              </p>
+
+                              <div className="space-y-1.5 text-xs text-slate-600 mb-4">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Rent:</span>
+                                  <span className="font-bold text-slate-800">
+                                    KES{" "}
+                                    {Number(unit.rent_amount).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">
+                                    Deposit:
+                                  </span>
+                                  <span className="font-medium">
+                                    KES{" "}
+                                    {Number(
+                                      unit.deposit_amount,
+                                    ).toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              {canEdit && (
+                                <div className="space-y-2 pt-3 border-t border-slate-100">
+                                  {isOccupied ? (
+                                    <button
+                                      disabled
+                                      className="w-full py-2 bg-slate-100 text-slate-400 text-xs font-bold rounded-lg cursor-not-allowed flex items-center justify-center gap-1"
+                                    >
+                                      🔒 Occupied - Editing Locked
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => setEditingUnit(unit)}
+                                        className="w-full py-2 border border-primary text-primary text-xs font-bold rounded-lg hover:bg-primary/5 transition-colors"
+                                      >
+                                        Edit Details
+                                      </button>
+
                                       <button
                                         onClick={() =>
-                                          alert(
-                                            `Navigate to Add Tenant for ${unit.unit_code}`,
+                                          handleDeleteUnit(
+                                            unit.id,
+                                            unit.unit_code,
                                           )
                                         }
-                                        className="w-full py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-1 shadow-sm"
+                                        className="w-full py-2 border border-red-200 text-red-600 text-xs font-bold rounded-lg hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
                                       >
-                                        + Add Tenant
+                                        🗑️ Delete Unit
                                       </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            )}
+
+                                      {unit.status === "available" && (
+                                        <button
+                                          onClick={() =>
+                                            alert(
+                                              `Navigate to Add Tenant for ${unit.unit_code}`,
+                                            )
+                                          }
+                                          className="w-full py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-1 shadow-sm"
+                                        >
+                                          + Add Tenant
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -426,7 +462,7 @@ export default function UnitManagementTab({
 }
 
 // ==========================================
-// ✅ UPDATED: ADD UNIT MODAL (Floor Validation Added)
+// ADD UNIT MODAL
 // ==========================================
 function AddUnitModal({
   group,
@@ -516,7 +552,7 @@ function AddUnitModal({
 }
 
 // ==========================================
-// EDIT UNIT GROUP MODAL (Unchanged)
+// EDIT UNIT GROUP MODAL
 // ==========================================
 function EditUnitGroupModal({
   group,
@@ -685,7 +721,7 @@ function EditUnitGroupModal({
 }
 
 // ==========================================
-// EDIT UNIT MODAL (Unchanged)
+// EDIT UNIT MODAL
 // ==========================================
 function EditUnitModal({
   unit,

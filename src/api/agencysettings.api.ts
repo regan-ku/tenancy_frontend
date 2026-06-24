@@ -1,4 +1,6 @@
 import apiClient from "@/api/axios";
+import { endpoints } from "@/config/endpoints";
+import { useAuthStore } from "@/store/auth.store";
 
 // ==========================================
 // INTERFACES
@@ -10,24 +12,21 @@ export interface AgencyProfile {
   contact_email: string;
   phone_number: string;
   physical_address: string;
-  website?: string;
 }
 
-// ✅ UPDATED: Handles specific fields for Paybill, Till, and Bank
 export interface AgencyPaymentAccount {
   id: number;
   account_type: "paybill" | "till" | "bank";
-  account_name: string; // The label (e.g., "Main Rent Collection")
-  paybill_number?: string; // For Paybill
-  till_number?: string; // For Till
-  account_number?: string; // For Paybill (Account No) or Bank (Account No)
-  bank_name?: string; // For Bank
+  account_name: string;
+  paybill_number?: string;
+  till_number?: string;
+  account_number?: string;
+  bank_name?: string;
   is_default: boolean;
   verification_status: "pending" | "verified" | "rejected";
   created_at: string;
 }
 
-// ✅ IMMUTABLE AUDIT LOG INTERFACE
 export interface ActivityLogEntry {
   id: string;
   staff_name: string;
@@ -42,68 +41,100 @@ export interface ActivityLogEntry {
 // API METHODS
 // ==========================================
 export const agencySettingsApi = {
-  // 1. Agency Profile
+  // 1. Agency Profile (✅ REAL API)
   getProfile: async (): Promise<AgencyProfile> => {
-    return {
-      id: 1,
-      name: "Nairobi Premier Realtors",
-      registration_number: "PRV-2024-88991",
-      contact_email: "admin@nairokipremier.co.ke",
-      phone_number: "+254 700 000 000",
-      physical_address: "Westlands Business Park, 4th Floor, Nairobi",
-      website: "www.nairokipremier.co.ke",
-    };
+    try {
+      const response = await apiClient.get(endpoints.AGENCIES.LIST);
+      const agencies = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+
+      if (agencies.length === 0) {
+        return {
+          id: 0,
+          name: "",
+          registration_number: "Not Registered",
+          contact_email: "",
+          phone_number: "",
+          physical_address: "",
+        };
+      }
+
+      const { user } = useAuthStore.getState();
+      const agency =
+        agencies.find((a: any) => a.created_by === user?.id) || agencies[0];
+
+      return {
+        id: agency.id,
+        name: agency.name || "",
+        registration_number: agency.registration_number || "",
+        contact_email: agency.contact_email || "",
+        phone_number: agency.phone_number || "",
+        physical_address: agency.physical_address || "",
+      };
+    } catch (error) {
+      console.error("Failed to fetch agency profile:", error);
+      throw error;
+    }
   },
 
   updateProfile: async (
     data: Partial<AgencyProfile>,
   ): Promise<AgencyProfile> => {
-    return data as AgencyProfile;
+    try {
+      if (!data.id || data.id === 0)
+        throw new Error("No agency found to update.");
+      const payload = {
+        name: data.name,
+        contact_email: data.contact_email,
+        phone_number: data.phone_number,
+        physical_address: data.physical_address,
+      };
+      const response = await apiClient.patch(
+        endpoints.AGENCIES.DETAIL(data.id),
+        payload,
+      );
+      return response.data;
+    } catch (error) {
+      console.error("Failed to update agency profile:", error);
+      throw error;
+    }
   },
 
-  // 2. Payment Accounts
+  // 2. Payment Accounts (✅ REAL API)
   getPaymentAccounts: async (): Promise<AgencyPaymentAccount[]> => {
-    return [
-      {
-        id: 1,
-        account_type: "paybill",
-        account_name: "Main Rent Collection",
-        paybill_number: "247247",
-        account_number: "123456789",
-        is_default: true,
-        verification_status: "verified",
-        created_at: "2026-01-15",
-      },
-      {
-        id: 2,
-        account_type: "till",
-        account_name: "Agency Till Number",
-        till_number: "987654",
-        is_default: false,
-        verification_status: "pending",
-        created_at: "2026-06-10",
-      },
-      {
-        id: 3,
-        account_type: "bank",
-        account_name: "KCB Operating Account",
-        bank_name: "KCB Bank",
-        account_number: "1234567890",
-        is_default: false,
-        verification_status: "verified",
-        created_at: "2026-02-20",
-      },
-    ];
+    try {
+      const response = await apiClient.get(endpoints.PAYMENTS.ACCOUNTS);
+      const accountsArray = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+      return accountsArray;
+    } catch (error) {
+      console.error("Failed to fetch payment accounts:", error);
+      return [];
+    }
   },
 
-  addPaymentAccount: async (
-    data: Partial<AgencyPaymentAccount>,
-  ): Promise<AgencyPaymentAccount> => {
-    return data as AgencyPaymentAccount;
+  addPaymentAccount: async (data: any): Promise<AgencyPaymentAccount> => {
+    const response = await apiClient.post(endpoints.PAYMENTS.ACCOUNTS, data);
+    return response.data;
   },
 
-  // 3. Audit & Activity Log (Immutable)
+  // ✅ NEW: Set a specific account as the default for rent routing
+  setDefaultAccount: async (id: number): Promise<void> => {
+    await apiClient.patch(endpoints.PAYMENTS.ACCOUNT_DETAIL(id), {
+      is_default: true,
+    });
+  },
+
+  // ✅ NEW: Remove/Delete a payment account
+  removePaymentAccount: async (id: number): Promise<void> => {
+    await apiClient.delete(endpoints.PAYMENTS.ACCOUNT_DETAIL(id));
+  },
+
+  // 3. Audit & Activity Log (Mocked until backend endpoint is ready)
   getActivityLogs: async (): Promise<ActivityLogEntry[]> => {
+    // TODO: Replace with real API call when backend endpoint is ready
     return [
       {
         id: "L1",
@@ -122,24 +153,6 @@ export const agencySettingsApi = {
         target_entity: "Lavington Villas, V-02",
         timestamp: "2026-06-18 11:15",
         ip_address: "10.0.0.12",
-      },
-      {
-        id: "L3",
-        staff_name: "System Admin",
-        staff_role: "Agency Admin",
-        action: "Added Payment Account",
-        target_entity: "Till Number 987654",
-        timestamp: "2026-06-18 09:00",
-        ip_address: "192.168.1.10",
-      },
-      {
-        id: "L4",
-        staff_name: "James Mwangi",
-        staff_role: "Caretaker",
-        action: "Resolved Maintenance Ticket",
-        target_entity: "M-101 (Water Leak)",
-        timestamp: "2026-06-17 16:45",
-        ip_address: "172.16.0.5",
       },
     ];
   },

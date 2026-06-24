@@ -7,6 +7,15 @@ import { useAuthStore } from "@/store/auth.store";
 import { applicationsApi, TenantHistorySummary } from "@/api/applications.api";
 import { propertiesApi } from "@/api/properties.api";
 
+// ✅ BULLETPROOF CURRENCY PARSER: Handles strings, numbers, commas, and nulls
+const formatCurrency = (value: any): string => {
+  if (value === null || value === undefined || value === "") return "N/A";
+  // Remove commas if they exist, then parse to float
+  const num = parseFloat(String(value).replace(/,/g, ""));
+  if (isNaN(num)) return "N/A";
+  return num.toLocaleString();
+};
+
 export default function StepTermsAndSubmit() {
   const router = useRouter();
   const { user } = useAuthStore();
@@ -14,6 +23,7 @@ export default function StepTermsAndSubmit() {
     applicationType,
     formData,
     termsAccepted,
+    setTermsAccepted,
     updateFormData,
     setSubmitting,
     isSubmitting,
@@ -26,33 +36,39 @@ export default function StepTermsAndSubmit() {
     useState<TenantHistorySummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ AUTO-POPULATE: Fetch Unit Details & Tenant History on mount
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
-      try {
-        // 1. Fetch Unit Details (Now using propertyId and target_unit_id)
-        if (formData.target_unit_id && formData.propertyId) {
+
+      if (formData.target_unit_id && formData.propertyId) {
+        try {
           const unitData = await propertiesApi.getUnitById(
             formData.propertyId,
             formData.target_unit_id,
           );
           setUnitDetails(unitData);
+        } catch (unitErr: any) {
+          console.warn(
+            "⚠️ Could not fetch unit details (403/Network). Using wizard fallback data.",
+            unitErr,
+          );
         }
+      }
 
-        // 2. Fetch Tenant History (if user is logged in and has an ID)
-        if (user?.id) {
+      if (user?.id) {
+        try {
           const historyData = await applicationsApi.getTenantHistorySummary(
             user.id,
           );
           setTenantHistory(historyData);
+        } catch (histErr) {
+          console.warn("⚠️ Could not fetch tenant history.", histErr);
         }
-      } catch (err) {
-        console.error("Failed to fetch review data", err);
-      } finally {
-        setIsLoading(false);
       }
+
+      setIsLoading(false);
     };
+
     fetchData();
   }, [formData.target_unit_id, formData.propertyId, user?.id]);
 
@@ -66,27 +82,18 @@ export default function StepTermsAndSubmit() {
     try {
       const payload = new FormData();
 
-      // Append all text fields from the wizard
       Object.entries(formData).forEach(([key, value]) => {
         if (value !== null && value !== undefined && value !== "") {
           payload.append(key, String(value));
         }
       });
 
-      // Append application metadata explicitly
       if (applicationType) payload.append("application_type", applicationType);
-      if (formData.target_unit_id)
-        payload.append("target_unit_id", String(formData.target_unit_id));
-      if (formData.current_unit_id)
-        payload.append("current_unit_id", String(formData.current_unit_id));
 
-      // Submit to backend
       await applicationsApi.submitApplication(payload);
 
-      // Success: Reset wizard and redirect
       resetWizard();
 
-      // Redirect based on role
       if (user?.role === "tenant") {
         router.push("/dashboard/tenant");
       } else {
@@ -94,6 +101,11 @@ export default function StepTermsAndSubmit() {
       }
     } catch (err: any) {
       console.error("Application submission failed:", err);
+      alert(
+        err?.response?.data?.detail ||
+          err?.response?.data?.error ||
+          "Failed to submit application. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -106,6 +118,24 @@ export default function StepTermsAndSubmit() {
       </div>
     );
   }
+
+  // ✅ BULLETPROOF FALLBACKS:
+  // 1. Try to get from API (unitDetails)
+  // 2. Fallback to Zustand Store (formData) if API failed
+  // 3. Format safely using the parser
+  const displayUnitCode =
+    unitDetails?.unit_code ||
+    formData.target_unit_code ||
+    `Unit #${formData.target_unit_id}`;
+  const displayRent = formatCurrency(
+    unitDetails?.rent_amount ?? formData.target_unit_rent,
+  );
+  const displayDeposit = formatCurrency(
+    unitDetails?.deposit_amount ?? formData.target_unit_deposit,
+  );
+  const displayBilling = unitDetails?.billing_cycle || "monthly";
+  const displayProperty =
+    unitDetails?.property_title || `Property #${formData.propertyId}`;
 
   return (
     <div className="space-y-6">
@@ -125,7 +155,7 @@ export default function StepTermsAndSubmit() {
         </div>
       )}
 
-      {/* ✅ 1. TENANT HISTORY & NOTES (Passed to Manager) */}
+      {/* 1. TENANT HISTORY & NOTES */}
       {tenantHistory && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 space-y-4">
           <h3 className="font-bold text-primary-dark flex items-center gap-2">
@@ -203,40 +233,31 @@ export default function StepTermsAndSubmit() {
         </div>
       )}
 
-      {/* ✅ 2. UNIT & APPLICATION SUMMARY */}
+      {/* 2. UNIT & APPLICATION SUMMARY */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
         <h3 className="font-bold text-primary-dark">Application Summary</h3>
 
-        {/* Unit Details */}
-        {unitDetails && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm pb-4 border-b border-slate-200">
-            <div>
-              <p className="text-xs text-slate-500 uppercase">Property</p>
-              <p className="font-semibold text-slate-800">
-                {unitDetails.property_title || "N/A"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500 uppercase">Unit Code</p>
-              <p className="font-semibold text-slate-800">
-                {unitDetails.unit_code || `Unit #${formData.target_unit_id}`}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500 uppercase">Rent Amount</p>
-              <p className="font-semibold text-secondary">
-                KES {Number(unitDetails.rent_amount || 0).toLocaleString()}/
-                {unitDetails.billing_cycle}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500 uppercase">Deposit</p>
-              <p className="font-semibold text-slate-800">
-                KES {Number(unitDetails.deposit_amount || 0).toLocaleString()}
-              </p>
-            </div>
+        {/* Unit Details (Using Fallbacks if API returned 403) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm pb-4 border-b border-slate-200">
+          <div>
+            <p className="text-xs text-slate-500 uppercase">Property</p>
+            <p className="font-semibold text-slate-800">{displayProperty}</p>
           </div>
-        )}
+          <div>
+            <p className="text-xs text-slate-500 uppercase">Unit Code</p>
+            <p className="font-semibold text-slate-800">{displayUnitCode}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 uppercase">Rent Amount</p>
+            <p className="font-semibold text-secondary">
+              KES {displayRent}/{displayBilling}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500 uppercase">Deposit</p>
+            <p className="font-semibold text-slate-800">KES {displayDeposit}</p>
+          </div>
+        </div>
 
         {/* Applicant Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -253,7 +274,6 @@ export default function StepTermsAndSubmit() {
             </p>
           </div>
 
-          {/* Conditional Summary Fields */}
           {applicationType === "rental" && (
             <>
               <div>
@@ -337,16 +357,14 @@ export default function StepTermsAndSubmit() {
         </div>
       </div>
 
-      {/* ✅ 3. Terms and Conditions */}
+      {/* 3. Terms and Conditions */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <input
           type="checkbox"
           id="termsAccepted"
           checked={termsAccepted}
-          onChange={(e) =>
-            updateFormData({ termsAccepted: e.target.checked } as any)
-          }
-          className="mt-1 w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary"
+          onChange={(e) => setTermsAccepted(e.target.checked)}
+          className="mt-1 w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary cursor-pointer"
         />
         <label
           htmlFor="termsAccepted"
@@ -360,7 +378,7 @@ export default function StepTermsAndSubmit() {
         </label>
       </div>
 
-      {/* ✅ 4. Submit Button */}
+      {/* 4. Submit Button */}
       <button
         onClick={handleSubmit}
         disabled={isSubmitting || !termsAccepted}

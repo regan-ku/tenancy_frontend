@@ -26,8 +26,43 @@ export default function ListingsPage() {
       );
 
       const data = await marketplaceApi.getListings(cleanFilters);
-      setListings(data.results);
-      setTotalCount(data.count);
+
+      // ✅ SAFETY NET: Deduplicate listings by property to prevent showing the same property multiple times.
+      // If the backend slips through a duplicate, this ensures the UI only renders unique properties.
+      const uniqueMap = new Map<string | number, Listing>();
+
+      for (const item of data.results) {
+        // Identify the property uniquely (Adjust 'property' or 'property_id' based on your exact API JSON response)
+        const propId =
+          (item as any).property ||
+          (item as any).property_id ||
+          item.property_title;
+
+        const existing = uniqueMap.get(propId);
+
+        // Parse prices safely to find the cheapest unit for this property
+        const currentPrice = parseFloat(
+          (item as any).min_rent_amount || (item as any).rent_amount || "0",
+        );
+        const existingPrice = existing
+          ? parseFloat(
+              (existing as any).min_rent_amount ||
+                (existing as any).rent_amount ||
+                "0",
+            )
+          : Infinity;
+
+        // Keep the listing with the LOWEST price for this property
+        if (!existing || currentPrice < existingPrice) {
+          uniqueMap.set(propId, item);
+        }
+      }
+
+      // Convert Map back to an array
+      const uniqueListings = Array.from(uniqueMap.values());
+
+      setListings(uniqueListings);
+      setTotalCount(uniqueListings.length); // Update count to reflect unique properties
     } catch (err: any) {
       setError("Failed to load listings. Please try again.");
       console.error(err);

@@ -1,5 +1,6 @@
 import apiClient from "@/api/axios";
 import { endpoints } from "@/config/endpoints";
+import { useAuthStore } from "@/store/auth.store";
 
 // ==========================================
 // INTERFACES: AGENCY DIRECTORS
@@ -12,7 +13,7 @@ export interface AgencyDirector {
   email: string;
   phone_number: string;
   nationality: string;
-  address?: string;
+  address: string;
   ownership_percentage: number;
   is_primary_director: boolean;
   verification_status: "pending" | "verified" | "rejected" | "suspended";
@@ -26,13 +27,13 @@ export interface CreateDirectorPayload {
   email: string;
   phone_number: string;
   nationality: string;
-  address?: string;
+  address: string;
   ownership_percentage: number;
   is_primary_director: boolean;
 }
 
 // ==========================================
-// INTERFACES: DELEGATIONS
+// INTERFACES: DELEGATIONS & STAFF
 // ==========================================
 export interface PropertyDelegation {
   id: number;
@@ -40,16 +41,13 @@ export interface PropertyDelegation {
   property_location: string;
   landlord_name: string;
   delegation_type: "full" | "partial" | "view_only";
-  permissions: string[]; // e.g., ["manage_tenants", "collect_rent", "maintenance"]
+  permissions: string[];
   status: "pending" | "active" | "revoked";
   total_units: number;
   assigned_staff_count: number;
   created_at: string;
 }
 
-// ==========================================
-// INTERFACES: AGENCY STAFF (AGENTS/CARETAKERS)
-// ==========================================
 export interface AgencyStaff {
   id: number;
   full_name: string;
@@ -72,52 +70,50 @@ export interface CreateStaffPayload {
 // API METHODS
 // ==========================================
 export const agenciesApi = {
-  // ==========================================
-  // 1. DIRECTORS
-  // ==========================================
-  getDirectors: async (agencyId: number = 1): Promise<AgencyDirector[]> => {
+  // Helper to get the current user's agency ID dynamically
+  getCurrentAgency: async (): Promise<any | null> => {
     try {
-      const response = await apiClient.get(
-        endpoints.AGENCIES.DIRECTORS(agencyId),
+      const response = await apiClient.get(endpoints.AGENCIES.LIST);
+      const agencies = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+      if (agencies.length === 0) return null;
+
+      const { user } = useAuthStore.getState();
+      return (
+        agencies.find((a: any) => a.created_by === user?.id) || agencies[0]
       );
-      return response.data;
     } catch (error) {
-      // Mock fallback data
-      return [
-        {
-          id: 1,
-          full_name: "Jane Mwangi",
-          national_id: "12345678",
-          email: "jane@nairobipremier.co.ke",
-          phone_number: "+254700000001",
-          nationality: "Kenyan",
-          ownership_percentage: 60,
-          is_primary_director: true,
-          verification_status: "verified",
-          created_at: "2026-01-05",
-        },
-        {
-          id: 2,
-          full_name: "Peter Ochieng",
-          passport_number: "P9876543",
-          email: "peter@nairobipremier.co.ke",
-          phone_number: "+254700000002",
-          nationality: "Kenyan",
-          ownership_percentage: 40,
-          is_primary_director: false,
-          verification_status: "pending",
-          created_at: "2026-01-05",
-        },
-      ];
+      return null;
     }
   },
 
-  addDirector: async (
-    agencyId: number,
-    data: CreateDirectorPayload,
-  ): Promise<AgencyDirector> => {
+  // 1. DIRECTORS
+  getDirectors: async (agencyId: number): Promise<AgencyDirector[]> => {
+    const response = await apiClient.get(
+      endpoints.AGENCIES.DIRECTORS(agencyId),
+    );
+    return Array.isArray(response.data)
+      ? response.data
+      : response.data.results || [];
+  },
+
+  addDirector: async (agencyId: number, data: any): Promise<AgencyDirector> => {
     const response = await apiClient.post(
       endpoints.AGENCIES.DIRECTORS(agencyId),
+      data,
+    );
+    return response.data;
+  },
+
+  // ✅ NEW: Update Director API Method
+  updateDirector: async (
+    agencyId: number,
+    directorId: number,
+    data: Partial<CreateDirectorPayload>,
+  ): Promise<AgencyDirector> => {
+    const response = await apiClient.patch(
+      `${endpoints.AGENCIES.DIRECTORS(agencyId)}${directorId}/`,
       data,
     );
     return response.data;
@@ -141,67 +137,14 @@ export const agenciesApi = {
     );
   },
 
-  // ==========================================
   // 2. DELEGATIONS
-  // ==========================================
-  getDelegations: async (
-    agencyId: number = 1,
-  ): Promise<PropertyDelegation[]> => {
-    try {
-      const response = await apiClient.get(
-        endpoints.AGENCIES.DELEGATIONS(agencyId),
-      );
-      return response.data;
-    } catch (error) {
-      return [
-        {
-          id: 101,
-          property_name: "Myles Apartment",
-          property_location: "Kilimani, Nairobi",
-          landlord_name: "David Miller",
-          delegation_type: "full",
-          permissions: [
-            "manage_tenants",
-            "collect_rent",
-            "maintenance",
-            "listings",
-          ],
-          status: "active",
-          total_units: 24,
-          assigned_staff_count: 2,
-          created_at: "2026-01-15",
-        },
-        {
-          id: 102,
-          property_name: "Westlands Commercial Plaza",
-          property_location: "Westlands, Nairobi",
-          landlord_name: "Sarah Connor",
-          delegation_type: "partial",
-          permissions: ["maintenance", "listings"],
-          status: "active",
-          total_units: 12,
-          assigned_staff_count: 1,
-          created_at: "2026-03-10",
-        },
-        {
-          id: 103,
-          property_name: "Lavington Villas",
-          property_location: "Lavington, Nairobi",
-          landlord_name: "John Doe",
-          delegation_type: "full",
-          permissions: [
-            "manage_tenants",
-            "collect_rent",
-            "maintenance",
-            "listings",
-          ],
-          status: "pending",
-          total_units: 8,
-          assigned_staff_count: 0,
-          created_at: "2026-06-18",
-        },
-      ];
-    }
+  getDelegations: async (agencyId: number): Promise<PropertyDelegation[]> => {
+    const response = await apiClient.get(
+      endpoints.AGENCIES.DELEGATIONS(agencyId),
+    );
+    return Array.isArray(response.data)
+      ? response.data
+      : response.data.results || [];
   },
 
   acceptDelegation: async (
@@ -222,47 +165,12 @@ export const agenciesApi = {
     );
   },
 
-  // ==========================================
-  // 3. STAFF (AGENTS / CARETAKERS / PROPERTY MANAGERS)
-  // ==========================================
-  getAgencyStaff: async (agencyId: number = 1): Promise<AgencyStaff[]> => {
-    try {
-      const response = await apiClient.get(endpoints.AGENCIES.STAFF(agencyId));
-      return response.data;
-    } catch (error) {
-      return [
-        {
-          id: 1,
-          full_name: "Alice Agent",
-          email: "alice@agency.com",
-          phone: "+254711222333",
-          role: "agent",
-          assigned_properties: 2,
-          is_active: true,
-          created_at: "2026-02-01",
-        },
-        {
-          id: 2,
-          full_name: "Bob Manager",
-          email: "bob@agency.com",
-          phone: "+254722333444",
-          role: "property_manager",
-          assigned_properties: 5,
-          is_active: true,
-          created_at: "2026-01-05",
-        },
-        {
-          id: 3,
-          full_name: "James Mwangi",
-          email: "james@agency.com",
-          phone: "+254733444555",
-          role: "caretaker",
-          assigned_properties: 3,
-          is_active: true,
-          created_at: "2026-03-12",
-        },
-      ];
-    }
+  // 3. STAFF
+  getAgencyStaff: async (agencyId: number): Promise<AgencyStaff[]> => {
+    const response = await apiClient.get(endpoints.AGENCIES.STAFF(agencyId));
+    return Array.isArray(response.data)
+      ? response.data
+      : response.data.results || [];
   },
 
   createStaff: async (

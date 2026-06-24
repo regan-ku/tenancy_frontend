@@ -51,10 +51,27 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
       }
 
-      set({ user: user || null, isAuthenticated: true, isLoading: false });
+      // ✅ FIX: Ensure profile_complete is mapped if returned in login payload
+      const safeUser = {
+        ...user,
+        profile_complete:
+          user?.profile_complete ?? user?.profile?.profile_complete ?? false,
+      };
 
+      set({ user: safeUser, isAuthenticated: true, isLoading: false });
+
+      // Fetch the ultimate source of truth from the backend
       const stateData = await get().fetchUserState();
       set({ userState: stateData });
+
+      // ✅ CRITICAL FIX: Sync profile_complete from userState into the user object
+      // This ensures all frontend guards instantly know the user's true status
+      if (stateData && typeof stateData.profile_complete === "boolean") {
+        set({
+          user: { ...safeUser, profile_complete: stateData.profile_complete },
+        });
+      }
+
       return stateData?.next_route || null;
     } catch (err: any) {
       set({
@@ -99,7 +116,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         const rawData = profileResponse.data;
 
         // 🚨 BULLETPROOF MERGER:
-        // Handles nested user objects AND polymorphic profiles (e.g., Agency has 'name' instead of 'full_name')
         const userData = {
           ...rawData,
           ...(rawData.user ? rawData.user : {}), // Flatten if nested under 'user' key
@@ -109,6 +125,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           full_name:
             rawData.full_name || rawData.user?.full_name || rawData.name,
           role: rawData.role || rawData.user?.role,
+          // ✅ FIX: Explicitly map profile_complete from the profile endpoint
+          profile_complete:
+            rawData.profile_complete ?? rawData.user?.profile_complete ?? false,
         };
 
         set({ user: userData, isLoading: false });
@@ -123,6 +142,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const stateData = await get().fetchUserState();
       set({ userState: stateData });
+
+      // ✅ CRITICAL FIX: Sync profile_complete from userState into user object for Guards
+      if (
+        stateData &&
+        typeof stateData.profile_complete === "boolean" &&
+        get().user
+      ) {
+        set({
+          user: {
+            ...get().user!,
+            profile_complete: stateData.profile_complete,
+          },
+        });
+      }
+
       return stateData?.next_route || null;
     } catch (error) {
       return null;

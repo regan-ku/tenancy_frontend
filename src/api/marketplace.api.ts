@@ -14,7 +14,7 @@ export interface PublicUnitGroup {
   floor_range: string;
   base_rent_amount: string;
   deposit_amount: string;
-  service_charge_amount: string;
+  service_charge: string;
   billing_cycle: string;
   capacity: number;
   cover_photo?: string | null;

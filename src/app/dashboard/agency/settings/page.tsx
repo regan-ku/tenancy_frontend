@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/auth.store";
-// ✅ Ensure casing matches your actual file name (usually camelCase)
 import { agencySettingsApi, AgencyProfile } from "@/api/agencysettings.api";
 import AgencyPaymentAccounts from "@/components/agency/AgencyPaymentAccounts";
-// ✅ Import the Directors page we built in Phase 2
 import AgencyDirectorsPage from "@/app/dashboard/agency/directors/page";
 
 export default function AgencySettingsPage() {
@@ -18,12 +16,21 @@ export default function AgencySettingsPage() {
   const [profile, setProfile] = useState<AgencyProfile | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<AgencyProfile>>({});
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   useEffect(() => {
-    agencySettingsApi.getProfile().then((data) => {
-      setProfile(data);
-      setFormData(data);
-    });
+    agencySettingsApi
+      .getProfile()
+      .then((data) => {
+        setProfile(data);
+        setFormData(data);
+      })
+      .catch((error) => {
+        console.error("Error loading agency profile:", error);
+      })
+      .finally(() => {
+        setLoadingProfile(false);
+      });
   }, []);
 
   const handleSaveProfile = async () => {
@@ -33,10 +40,24 @@ export default function AgencySettingsPage() {
       setFormData(updated);
       setIsEditing(false);
       alert("✅ Agency profile updated successfully.");
-    } catch (error) {
-      alert("Failed to update profile.");
+    } catch (error: any) {
+      console.error("Update failed:", error);
+      // Show specific backend error if available
+      const errorMsg =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "Failed to update profile. Check permissions.";
+      alert(`❌ ${errorMsg}`);
     }
   };
+
+  if (loadingProfile) {
+    return (
+      <div className="p-8 text-center text-slate-400">
+        Loading agency settings...
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -84,92 +105,113 @@ export default function AgencySettingsPage() {
               <h2 className="text-lg font-bold text-slate-800">
                 Business Information
               </h2>
-              <button
-                onClick={() =>
-                  isEditing ? handleSaveProfile() : setIsEditing(true)
-                }
-                className={`text-sm font-bold px-4 py-2 rounded-lg transition-colors ${isEditing ? "bg-green-600 text-white hover:bg-green-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
-              >
-                {isEditing ? "Save Changes" : "Edit Profile"}
-              </button>
+              {profile.id !== 0 && (
+                <button
+                  onClick={() =>
+                    isEditing ? handleSaveProfile() : setIsEditing(true)
+                  }
+                  className={`text-sm font-bold px-4 py-2 rounded-lg transition-colors ${
+                    isEditing
+                      ? "bg-green-600 text-white hover:bg-green-700"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {isEditing ? "Save Changes" : "Edit Profile"}
+                </button>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Agency Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.name || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  disabled={!isEditing}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
-                />
+            {profile.id === 0 ? (
+              <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                <p className="text-slate-500 font-medium">
+                  No agency registered yet.
+                </p>
+                <p className="text-xs text-slate-400 mt-2">
+                  Please complete the agency onboarding wizard to manage your
+                  profile.
+                </p>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Registration Number
-                </label>
-                <input
-                  type="text"
-                  value={profile.registration_number}
-                  disabled
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-500"
-                />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Agency Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    disabled={!isEditing}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Registration Number
+                  </label>
+                  <input
+                    type="text"
+                    value={profile.registration_number}
+                    disabled
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Contact Email
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.contact_email || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        contact_email: e.target.value,
+                      })
+                    }
+                    disabled={!isEditing}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.phone_number || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone_number: e.target.value })
+                    }
+                    disabled={!isEditing}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Physical Address
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.physical_address || ""}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        physical_address: e.target.value,
+                      })
+                    }
+                    disabled={!isEditing}
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Contact Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.contact_email || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, contact_email: e.target.value })
-                  }
-                  disabled={!isEditing}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Phone Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.phone_number || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone_number: e.target.value })
-                  }
-                  disabled={!isEditing}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                  Physical Address
-                </label>
-                <input
-                  type="text"
-                  value={formData.physical_address || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      physical_address: e.target.value,
-                    })
-                  }
-                  disabled={!isEditing}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none disabled:bg-slate-50 disabled:text-slate-500"
-                />
-              </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* 2. DIRECTORS TAB (Reusing Phase 2 Component) */}
+        {/* 2. DIRECTORS TAB */}
         {activeTab === "directors" && (
           <div className="-m-6">
             <AgencyDirectorsPage />
@@ -187,7 +229,7 @@ export default function AgencySettingsPage() {
 }
 
 // ==========================================
-// ✅ ENHANCED AUDIT LOG SUB-COMPONENT
+// AUDIT LOG SUB-COMPONENT (Unchanged)
 // ==========================================
 function AuditLogView() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -201,7 +243,6 @@ function AuditLogView() {
     });
   }, []);
 
-  // ✅ Real-time filtering across staff, action, and target
   const filteredLogs = logs.filter(
     (log) =>
       log.staff_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -218,11 +259,9 @@ function AuditLogView() {
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             Immutable log of all operational actions performed by agency staff.
-            Used for compliance and dispute resolution.
           </p>
         </div>
         <div className="flex gap-3 w-full md:w-auto">
-          {/* ✅ Search Bar */}
           <div className="relative flex-1 md:w-64">
             <svg
               className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
@@ -245,27 +284,12 @@ function AuditLogView() {
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
             />
           </div>
-          {/* ✅ Export Button */}
           <button className="text-xs bg-slate-100 text-slate-700 px-3 py-2 rounded-lg font-bold hover:bg-slate-200 flex items-center gap-1 whitespace-nowrap">
-            <svg
-              className="w-3 h-3"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
             Export CSV
           </button>
         </div>
       </div>
 
-      {/* ✅ Logs Table */}
       <div className="overflow-x-auto border border-slate-200 rounded-xl">
         <table className="w-full text-sm text-left">
           <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold">
@@ -324,12 +348,6 @@ function AuditLogView() {
           </tbody>
         </table>
       </div>
-
-      {/* ✅ Compliance Retention Note */}
-      <p className="text-[10px] text-slate-400 text-center mt-4">
-        Logs are retained for 7 years in compliance with financial and
-        operational audit standards.
-      </p>
     </div>
   );
 }

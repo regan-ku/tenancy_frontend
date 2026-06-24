@@ -1,4 +1,7 @@
+"use client";
+
 import React from "react";
+import { usePathname } from "next/navigation"; // ✅ Added to check the current route
 import MarketplaceNavbar from "@/components/navigation/MarketplaceNavbar";
 
 export default function MarketplaceLayout({
@@ -6,6 +9,16 @@ export default function MarketplaceLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  // ✅ CHECK IF USER IS LOCKED IN THE WIZARD
+  const isLockedInWizard = pathname.includes("/applications/wizard");
+
+  // ✅ If they are in the wizard, render ONLY the page content. NO NAVBAR OR FOOTER.
+  if (isLockedInWizard) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-surface-muted">
       {/* Top Navigation */}

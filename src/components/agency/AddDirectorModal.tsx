@@ -1,30 +1,38 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   agenciesApi,
   AgencyDirector,
   CreateDirectorPayload,
 } from "@/api/agencies.api";
 
-interface AddDirectorModalProps {
+// ✅ UPDATED PROPS: Added optional 'director' prop
+interface DirectorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (director: AgencyDirector) => void;
+  agencyId: number;
+  director?: AgencyDirector | null;
 }
 
-export default function AddDirectorModal({
+export default function DirectorModal({
   isOpen,
   onClose,
   onSuccess,
-}: AddDirectorModalProps) {
+  agencyId,
+  director,
+}: DirectorModalProps) {
+  const isEditing = !!director;
+
   const [formData, setFormData] = useState<CreateDirectorPayload>({
     full_name: "",
     national_id: "",
     passport_number: "",
     email: "",
-    phone: "",
+    phone_number: "",
     nationality: "Kenyan",
+    address: "",
     ownership_percentage: 0,
     is_primary_director: false,
   });
@@ -32,22 +40,70 @@ export default function AddDirectorModal({
   const [idType, setIdType] = useState<"national" | "passport">("national");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // ✅ SYNC FORM DATA: Populate form when editing, reset when adding
+  useEffect(() => {
+    if (isOpen) {
+      if (director) {
+        setFormData({
+          full_name: director.full_name,
+          national_id: director.national_id || "",
+          passport_number: director.passport_number || "",
+          email: director.email,
+          phone_number: director.phone_number,
+          nationality: director.nationality,
+          address: director.address,
+          ownership_percentage: director.ownership_percentage,
+          is_primary_director: director.is_primary_director,
+        });
+        // Auto-select the correct ID tab based on existing data
+        setIdType(director.passport_number ? "passport" : "national");
+      } else {
+        // Reset form for adding new
+        setFormData({
+          full_name: "",
+          national_id: "",
+          passport_number: "",
+          email: "",
+          phone_number: "",
+          nationality: "Kenyan",
+          address: "",
+          ownership_percentage: 0,
+          is_primary_director: false,
+        });
+        setIdType("national");
+      }
+    }
+  }, [director, isOpen]);
+
   if (!isOpen) return null;
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >,
   ) => {
     const { name, value, type } = e.target;
     setFormData({
       ...formData,
       [name]:
-        type === "checkbox" ? (e.target as HTMLInputElement).checked : value,
+        type === "checkbox"
+          ? (e.target as HTMLInputElement).checked
+          : type === "number"
+            ? Number(value)
+            : value,
     });
   };
 
   const handleSubmit = async () => {
-    if (!formData.full_name || !formData.email || !formData.phone) {
-      return alert("Please fill in all required fields.");
+    if (
+      !formData.full_name ||
+      !formData.email ||
+      !formData.phone_number ||
+      !formData.address
+    ) {
+      return alert(
+        "Please fill in all required fields including Residential Address.",
+      );
     }
     if (
       formData.ownership_percentage <= 0 ||
@@ -58,28 +114,50 @@ export default function AddDirectorModal({
 
     setIsSubmitting(true);
     try {
-      // Mocking the API response for UI demonstration
-      const newDirector: AgencyDirector = {
-        id: Date.now(),
-        full_name: formData.full_name,
-        national_id: idType === "national" ? formData.national_id : null,
-        passport_number:
-          idType === "passport" ? formData.passport_number : null,
-        email: formData.email,
-        phone: formData.phone,
-        nationality: formData.nationality,
-        ownership_percentage: formData.ownership_percentage,
-        is_primary_director: formData.is_primary_director,
-        verification_status: "pending",
-        created_at: new Date().toISOString().split("T")[0],
-      };
+      const payload: any = { ...formData };
 
-      // In production: await agenciesApi.addDirector(agencyId, formData);
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network delay
+      // Handle ID constraint (only one can be sent to backend)
+      if (idType === "national") {
+        payload.national_id = formData.national_id;
+        delete payload.passport_number;
+      } else {
+        payload.passport_number = formData.passport_number;
+        delete payload.national_id;
+      }
 
-      onSuccess(newDirector);
-    } catch (error) {
-      alert("Failed to add director.");
+      let resultDirector;
+      if (isEditing) {
+        // ✅ UPDATE EXISTING DIRECTOR
+        resultDirector = await agenciesApi.updateDirector(
+          agencyId,
+          director!.id,
+          payload,
+        );
+      } else {
+        // ✅ CREATE NEW DIRECTOR
+        resultDirector = await agenciesApi.addDirector(agencyId, payload);
+      }
+
+      onSuccess(resultDirector);
+    } catch (error: any) {
+      console.error(
+        `Failed to ${isEditing ? "update" : "add"} director:`,
+        error,
+      );
+      const errors = error?.response?.data;
+      if (errors && typeof errors === "object") {
+        const errorMessages = Object.entries(errors)
+          .map(
+            ([field, messages]: [string, any]) =>
+              `${field}: ${Array.isArray(messages) ? messages.join(", ") : messages}`,
+          )
+          .join("\n");
+        alert(`❌ Validation failed:\n${errorMessages}`);
+      } else {
+        alert(
+          `Failed to ${isEditing ? "update" : "add"} director. Please check your details.`,
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -92,10 +170,12 @@ export default function AddDirectorModal({
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold text-primary-dark">
-              Add New Director
+              {isEditing ? "Edit Director Details" : "Add New Director"}
             </h2>
             <p className="text-sm text-slate-500 mt-1">
-              Register a legal representative for the agency.
+              {isEditing
+                ? "Update the legal representative's information."
+                : "Register a legal representative for the agency."}
             </p>
           </div>
           <button
@@ -152,10 +232,23 @@ export default function AddDirectorModal({
               </label>
               <input
                 type="text"
-                name="phone"
-                value={formData.phone}
+                name="phone_number"
+                value={formData.phone_number}
                 onChange={handleChange}
+                placeholder="+2547..."
                 className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                Residential Address *
+              </label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleChange}
+                rows={2}
+                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none resize-none"
               />
             </div>
           </div>
@@ -167,12 +260,14 @@ export default function AddDirectorModal({
             </h3>
             <div className="flex gap-4 mb-4">
               <button
+                type="button"
                 onClick={() => setIdType("national")}
                 className={`flex-1 py-2.5 rounded-lg border font-bold text-sm transition-all ${idType === "national" ? "bg-primary/5 border-primary text-primary" : "border-slate-200 text-slate-500"}`}
               >
                 National ID
               </button>
               <button
+                type="button"
                 onClick={() => setIdType("passport")}
                 className={`flex-1 py-2.5 rounded-lg border font-bold text-sm transition-all ${idType === "passport" ? "bg-primary/5 border-primary text-primary" : "border-slate-200 text-slate-500"}`}
               >
@@ -191,6 +286,7 @@ export default function AddDirectorModal({
                     name="national_id"
                     value={formData.national_id}
                     onChange={handleChange}
+                    placeholder="7 or 8 digits"
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
@@ -222,28 +318,7 @@ export default function AddDirectorModal({
               </div>
             </div>
 
-            {/* Document Upload Placeholder */}
-            <div className="mt-4 border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 transition-colors cursor-pointer">
-              <svg
-                className="w-8 h-8 mx-auto text-slate-400 mb-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                />
-              </svg>
-              <p className="text-sm font-bold text-slate-700">
-                Upload {idType === "national" ? "National ID" : "Passport"} Scan
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                PDF, JPG, or PNG (Max 5MB)
-              </p>
-            </div>
+            {/* ✅ REMOVED: Document Upload Placeholder as requested */}
           </div>
 
           {/* Ownership & Role Section */}
@@ -299,7 +374,9 @@ export default function AddDirectorModal({
           >
             {isSubmitting
               ? "Saving..."
-              : "Add Director & Submit for Verification"}
+              : isEditing
+                ? "Update Director"
+                : "Add Director & Submit for Verification"}
           </button>
         </div>
       </div>
