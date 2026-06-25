@@ -11,11 +11,9 @@ export const endpoints = {
     REGISTER: `${BASE}/accounts/auth/register/`,
     REFRESH: `${BASE}/accounts/refresh/`,
     VERIFY_TOKEN: `${BASE}/accounts/verify/`,
-    USER_STATE: `${BASE}/accounts/user-state/`, // Post-login routing engine
-
-    // ✅ ADDED: Password Recovery Endpoints
-    FORGOT_PASSWORD: `${BASE}/accounts/auth/password-reset/`, // Request reset link via email
-    RESET_PASSWORD: `${BASE}/accounts/auth/password-reset/confirm/`, // Submit new password with token
+    USER_STATE: `${BASE}/accounts/user-state/`,
+    FORGOT_PASSWORD: `${BASE}/accounts/auth/password-reset/`,
+    RESET_PASSWORD: `${BASE}/accounts/auth/password-reset/confirm/`,
   },
 
   PROFILE: {
@@ -35,28 +33,20 @@ export const endpoints = {
   PROPERTIES: {
     LIST: `${BASE}/properties/properties/`,
     DETAIL: (id: number) => `${BASE}/properties/properties/${id}/`,
-
-    // ✅ ADDED: Architectural Bridge Endpoint for Step 4
     FINALIZE_UNIT_GROUPS: (propertyId: number) =>
       `${BASE}/properties/properties/${propertyId}/finalize-unit-groups/`,
-
-    // Unit Groups
     UNIT_GROUPS: (propertyId: number) =>
       `${BASE}/properties/properties/${propertyId}/unit-groups/`,
     UNIT_GROUP_DETAIL: (propertyId: number, groupId: number) =>
       `${BASE}/properties/properties/${propertyId}/unit-groups/${groupId}/`,
     GENERATE_UNITS: (propertyId: number, groupId: number) =>
       `${BASE}/properties/properties/${propertyId}/unit-groups/${groupId}/generate/`,
-
-    // Units
     UNITS: (propertyId: number) =>
       `${BASE}/properties/properties/${propertyId}/units/`,
     UNIT_DETAIL: (propertyId: number, unitId: number) =>
       `${BASE}/properties/properties/${propertyId}/units/${unitId}/`,
     UPDATE_UNIT_STATUS: (propertyId: number, unitId: number) =>
       `${BASE}/properties/properties/${propertyId}/units/${unitId}/update-status/`,
-
-    // Media
     MEDIA: (propertyId: number) =>
       `${BASE}/properties/properties/${propertyId}/media/`,
     MEDIA_DETAIL: (propertyId: number, mediaId: number) =>
@@ -77,7 +67,7 @@ export const endpoints = {
     HIDE: (id: number) => `${BASE}/marketplace/properties/${id}/hide/`,
     UNPUBLISH: (id: number) =>
       `${BASE}/marketplace/properties/${id}/unpublish/`,
-    FEATURED: `${BASE}/marketplace/featured/`, //
+    FEATURED: `${BASE}/marketplace/featured/`,
     RESTORE: (id: number) => `${BASE}/marketplace/properties/${id}/restore/`,
   },
 
@@ -96,6 +86,10 @@ export const endpoints = {
     OCCUPANCY: `${BASE}/tenancies/occupancy/`,
     TENANT_HISTORY: (tenantId: number) =>
       `${BASE}/tenancies/tenants/${tenantId}/history/`,
+
+    // ✅ NEW: List endpoints for Agency Operations
+    TRANSFERS: `${BASE}/tenancies/tenancies/transfers/`,
+    TERMINATIONS: `${BASE}/tenancies/tenancies/terminations/`,
   },
 
   // ==========================================
@@ -108,6 +102,8 @@ export const endpoints = {
       `${BASE}/applications/applications/${id}/make_decision/`,
     ADD_NOTE: (id: number) =>
       `${BASE}/applications/applications/${id}/add_note/`,
+    // ✅ NEW: Cancel endpoint for applicants
+    CANCEL: (id: number) => `${BASE}/applications/applications/${id}/cancel/`,
     RENTAL: `${BASE}/applications/rental/`,
     TRANSFER: `${BASE}/applications/transfer/`,
   },

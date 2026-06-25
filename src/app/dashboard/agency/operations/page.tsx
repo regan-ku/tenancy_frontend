@@ -24,6 +24,7 @@ export default function AgencyOperationsPage() {
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       const [apps, trans, terms] = await Promise.all([
         agencyOperationsApi.getApplications(),
         agencyOperationsApi.getTransfers(),
@@ -37,13 +38,67 @@ export default function AgencyOperationsPage() {
     fetchData();
   }, []);
 
+  const handleTransferDecision = async (
+    transferId: number,
+    decision: "approved" | "rejected",
+  ) => {
+    const reason =
+      window.prompt(`Please provide a reason for this decision (optional):`) ||
+      "";
+    if (reason === null) return;
+
+    try {
+      await agencyOperationsApi.decideTransfer(transferId, decision, reason);
+      setTransfers(transfers.filter((t) => t.id !== transferId));
+      alert(`Transfer processed successfully!`);
+    } catch (error) {
+      console.error("Failed to decide on transfer", error);
+      alert("Failed to process transfer decision. Check console for details.");
+    }
+  };
+
+  const handleTerminationDecision = async (
+    terminationId: number,
+    decision: "approved" | "rejected",
+  ) => {
+    const reason =
+      window.prompt(`Please provide a reason for this checkout (optional):`) ||
+      "";
+    if (reason === null) return;
+
+    try {
+      await agencyOperationsApi.decideTermination(
+        terminationId,
+        decision,
+        reason,
+      );
+      setTerminations(terminations.filter((t) => t.id !== terminationId));
+      alert(`Termination processed successfully!`);
+    } catch (error) {
+      console.error("Failed to decide on termination", error);
+      alert(
+        "Failed to process termination decision. Check console for details.",
+      );
+    }
+  };
+
   const stats = {
-    pendingApps: applications.filter((a) => a.status === "pending").length,
+    pendingApps: applications.filter(
+      (a) => a.status === "pending" || a.status === "under_review",
+    ).length,
     pendingTransfers: transfers.filter((t) => t.status === "pending").length,
     pendingTerminations: terminations.filter(
       (t) => t.status === "pending_review",
     ).length,
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -119,47 +174,63 @@ export default function AgencyOperationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {applications.map((app) => (
-                  <tr
-                    key={app.id}
-                    className="hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-slate-800">
-                        {app.applicant_name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {app.applicant_phone}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-slate-700">
-                        {app.property_name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Unit {app.unit_code}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 text-xs">
-                      {app.landlord_name}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${app.status === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-slate-100 text-slate-600"}`}
-                      >
-                        {app.status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        onClick={() => setReviewingApp(app)}
-                        className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90"
-                      >
-                        Review & Decide
-                      </button>
+                {applications.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-8 text-center text-slate-500"
+                    >
+                      No pending applications.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  applications.map((app) => (
+                    <tr
+                      key={app.id}
+                      className="hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-slate-800">
+                          {app.applicant_name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {app.applicant_phone}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-medium text-slate-700">
+                          {app.property_name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Unit {app.unit_code}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600 text-xs">
+                        {app.landlord_name}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-bold capitalize ${
+                            app.status === "pending" ||
+                            app.status === "under_review"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {app.status.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => setReviewingApp(app)}
+                          className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90"
+                        >
+                          Review & Decide
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -179,36 +250,57 @@ export default function AgencyOperationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {transfers.map((req) => (
-                  <tr key={req.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-bold text-slate-800">
-                      {req.tenant_name}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">
-                      {req.from_unit}{" "}
-                      <span className="text-xs text-slate-400">
-                        ({req.from_property})
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-primary font-bold">
-                      {req.to_unit}{" "}
-                      <span className="text-xs text-slate-400 font-normal">
-                        ({req.to_property})
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 text-xs max-w-xs truncate">
-                      {req.reason}
-                    </td>
-                    <td className="px-6 py-4 text-right flex gap-2 justify-end">
-                      <button className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold">
-                        Approve
-                      </button>
-                      <button className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg font-bold">
-                        Reject
-                      </button>
+                {transfers.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-8 text-center text-slate-500"
+                    >
+                      No pending transfers.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  transfers.map((req) => (
+                    <tr key={req.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 font-bold text-slate-800">
+                        {req.tenant_name}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">
+                        {req.from_unit}{" "}
+                        <span className="text-xs text-slate-400">
+                          ({req.from_property})
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-primary font-bold">
+                        {req.to_unit}{" "}
+                        <span className="text-xs text-slate-400 font-normal">
+                          ({req.to_property})
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 text-xs max-w-xs truncate">
+                        {req.reason}
+                      </td>
+                      <td className="px-6 py-4 text-right flex gap-2 justify-end">
+                        <button
+                          onClick={() =>
+                            handleTransferDecision(req.id, "approved")
+                          }
+                          className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-green-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleTransferDecision(req.id, "rejected")
+                          }
+                          className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg font-bold hover:bg-red-200"
+                        >
+                          Reject
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -228,50 +320,75 @@ export default function AgencyOperationsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {terminations.map((notice) => (
-                  <tr key={notice.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-slate-800">
-                        {notice.tenant_name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {notice.unit_code} • {notice.property_name}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 capitalize">
-                        {notice.notice_type.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">
-                      {notice.proposed_move_out_date}
-                    </td>
-                    <td className="px-6 py-4 text-slate-500 text-xs max-w-xs truncate">
-                      {notice.notes}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold">
-                        Process Checkout
-                      </button>
+                {terminations.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-6 py-8 text-center text-slate-500"
+                    >
+                      No pending move-out notices.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  terminations.map((notice) => (
+                    <tr key={notice.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-slate-800">
+                          {notice.tenant_name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {notice.unit_code} • {notice.property_name}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 capitalize">
+                          {notice.notice_type.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">
+                        {notice.proposed_move_out_date}
+                      </td>
+                      <td className="px-6 py-4 text-slate-500 text-xs max-w-xs truncate">
+                        {notice.notes}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() =>
+                            handleTerminationDecision(notice.id, "approved")
+                          }
+                          className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90"
+                        >
+                          Process Checkout
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Application Review Modal */}
+      {/* ✅ FIXED: Application Review Modal */}
       {reviewingApp && (
         <AgencyApplicationReviewModal
           application={reviewingApp}
           onClose={() => setReviewingApp(null)}
-          onDecision={() => {
-            setApplications(
-              applications.filter((a) => a.id !== reviewingApp.id),
-            );
+          onDecisionMade={async () => {
+            // ✅ Changed from onDecision to onDecisionMade
             setReviewingApp(null);
+            // Refetch all data to ensure lists are perfectly in sync with the backend
+            setLoading(true);
+            const [apps, trans, terms] = await Promise.all([
+              agencyOperationsApi.getApplications(),
+              agencyOperationsApi.getTransfers(),
+              agencyOperationsApi.getTerminations(),
+            ]);
+            setApplications(apps);
+            setTransfers(trans);
+            setTerminations(terms);
+            setLoading(false);
           }}
         />
       )}

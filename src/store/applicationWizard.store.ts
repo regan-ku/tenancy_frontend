@@ -15,8 +15,8 @@ export interface ApplicationFormData {
   preferredFloor: number | null;
   target_unit_id: number | null;
   target_unit_code: string | null;
-  target_unit_rent: string | null; // ✅ ADDED: Stores rent to prevent NaN on Step 2
-  target_unit_deposit: string | null; // ✅ ADDED: Stores deposit to prevent NaN on Step 2
+  target_unit_rent: string | null;
+  target_unit_deposit: string | null;
   current_unit_id: number | null;
 
   // Conditional Fields based on Application Type
@@ -36,6 +36,7 @@ export interface ApplicationWizardStore {
   isSubmitting: boolean;
   error: string | null;
   showStepValidation: boolean;
+  wizardLocked: boolean; // ✅ ADDED: Controls the browser navigation lock
 
   nextStep: () => void;
   prevStep: () => void;
@@ -45,6 +46,7 @@ export interface ApplicationWizardStore {
   setSubmitting: (status: boolean) => void;
   setError: (error: string | null) => void;
   setShowStepValidation: (show: boolean) => void;
+  setWizardLocked: (locked: boolean) => void; // ✅ ADDED
   resetWizard: () => void;
 }
 
@@ -57,8 +59,8 @@ const initialFormData: ApplicationFormData = {
   preferredFloor: null,
   target_unit_id: null,
   target_unit_code: null,
-  target_unit_rent: null, // ✅ ADDED
-  target_unit_deposit: null, // ✅ ADDED
+  target_unit_rent: null,
+  target_unit_deposit: null,
   current_unit_id: null,
   anticipated_move_in_date: "",
   anticipated_move_out_date: "",
@@ -77,6 +79,7 @@ export const useApplicationWizardStore = create<ApplicationWizardStore>()(
       isSubmitting: false,
       error: null,
       showStepValidation: false,
+      wizardLocked: true, // ✅ ADDED: Locked by default while in the wizard
 
       nextStep: () => set((state) => ({ currentStep: state.currentStep + 1 })),
       prevStep: () =>
@@ -89,6 +92,7 @@ export const useApplicationWizardStore = create<ApplicationWizardStore>()(
       setSubmitting: (status) => set({ isSubmitting: status }),
       setError: (error) => set({ error }),
       setShowStepValidation: (show) => set({ showStepValidation: show }),
+      setWizardLocked: (locked) => set({ wizardLocked: locked }), // ✅ ADDED
 
       resetWizard: () =>
         set({
@@ -99,13 +103,14 @@ export const useApplicationWizardStore = create<ApplicationWizardStore>()(
           isSubmitting: false,
           error: null,
           showStepValidation: false,
+          wizardLocked: true, // Resets to locked for the next session
         }),
     }),
     {
       name: "tennacy-application-wizard-draft",
       partialize: (state) => ({
         applicationType: state.applicationType,
-        formData: state.formData, // Automatically includes the new rent/deposit fields
+        formData: state.formData,
         termsAccepted: state.termsAccepted,
         currentStep: state.currentStep,
       }),

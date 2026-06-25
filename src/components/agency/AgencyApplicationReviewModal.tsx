@@ -6,223 +6,229 @@ import {
   agencyOperationsApi,
 } from "@/api/agencyOperations.api";
 
-interface AgencyApplicationReviewModalProps {
+interface Props {
   application: AgencyApplication;
   onClose: () => void;
-  onDecision: () => void;
+  onDecisionMade: () => void;
 }
 
 export default function AgencyApplicationReviewModal({
   application,
   onClose,
-  onDecision,
-}: AgencyApplicationReviewModalProps) {
-  const [isProcessing, setIsProcessing] = useState(false);
+  onDecisionMade,
+}: Props) {
+  const [decision, setDecision] = useState<
+    "approved" | "rejected" | "escalated"
+  >("approved");
+  const [reason, setReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleDecision = async (
-    decision: "approve" | "reject" | "escalate",
-  ) => {
-    setIsProcessing(true);
-    try {
-      await agencyOperationsApi.makeDecision(
-        application.id,
-        decision,
-        "Processed via Agency Dashboard",
-      );
-      alert(
-        `✅ Application ${decision === "escalate" ? "escalated to landlord" : decision + "d"} successfully.`,
-      );
-      onDecision();
-    } catch (error) {
-      alert("Failed to process application.");
-    } finally {
-      setIsProcessing(false);
+  const handleSubmit = async () => {
+    if (
+      (decision === "rejected" || decision === "escalated") &&
+      !reason.trim()
+    ) {
+      setError("A reason is required for rejection or escalation.");
+      return;
     }
-  };
 
-  const getNoteColor = (type: string) => {
-    switch (type) {
-      case "payment":
-        return "border-l-green-500 bg-green-50";
-      case "behavior":
-        return "border-l-blue-500 bg-blue-50";
-      case "maintenance":
-        return "border-l-orange-500 bg-orange-50";
-      default:
-        return "border-l-slate-400 bg-slate-50";
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      await agencyOperationsApi.makeDecision(application.id, decision, reason);
+      onDecisionMade();
+    } catch (err: any) {
+      console.error("Decision failed", err);
+      setError(
+        err.response?.data?.detail ||
+          err.response?.data?.error ||
+          "Failed to process decision.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <div>
-            <h2 className="text-xl font-bold text-primary-dark">
-              Review Rental Application
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Applicant: {application.applicant_name}
-            </p>
-          </div>
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
+          <h2 className="text-xl font-bold text-primary-dark">
+            Review Application
+          </h2>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600"
           >
             <svg
-              className="w-6 h-6"
+              xmlns="http://www.w3.org/2000/svg"
               fill="none"
-              stroke="currentColor"
               viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-6 h-6"
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={2}
                 d="M6 18L18 6M6 6l12 12"
               />
             </svg>
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 overflow-y-auto space-y-6">
-          {/* Application Details */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div className="p-3 bg-slate-50 rounded-lg">
-              <p className="text-xs text-slate-400 uppercase font-bold">
-                Target Unit
-              </p>
-              <p className="font-bold text-slate-800">
-                {application.unit_code} • {application.property_name}
-              </p>
-            </div>
-            <div className="p-3 bg-slate-50 rounded-lg">
-              <p className="text-xs text-slate-400 uppercase font-bold">
-                Property Owner
-              </p>
-              <p className="font-bold text-slate-800">
-                {application.landlord_name}
-              </p>
-            </div>
-          </div>
-
-          {/* ✅ CRITICAL: TENANCY HISTORY & NOTES */}
-          <div className="bg-white border border-slate-200 rounded-xl p-4">
-            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-primary"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              Historical Tenancy Intelligence
-            </h3>
-            {application.past_tenancy_notes.length > 0 ? (
-              <div className="space-y-2">
-                {application.past_tenancy_notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className={`p-3 rounded-lg border-l-4 text-sm ${getNoteColor(note.type)}`}
-                  >
-                    <div className="flex justify-between mb-1">
-                      <span className="text-xs font-bold uppercase text-slate-600">
-                        {note.type}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        {note.date} • {note.author}
-                      </span>
-                    </div>
-                    <p className="text-slate-700">{note.content}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-slate-400 text-sm italic text-center py-4">
-                No previous tenancy records found (First-time applicant).
-              </p>
-            )}
-          </div>
-
-          {/* Delegation Warning */}
-          {!application.agency_can_approve && (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
-              <svg
-                className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                />
-              </svg>
+        {/* Content */}
+        <div className="p-6 space-y-6">
+          {/* Application Summary */}
+          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <h3 className="font-bold text-slate-800 mb-2">Applicant Details</h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-sm font-bold text-yellow-800">
-                  Partial Delegation Active
-                </p>
-                <p className="text-xs text-yellow-700 mt-0.5">
-                  Your agency has "Review Only" permissions for this property.
-                  You cannot approve or reject this application directly. You
-                  must escalate it to the landlord for final decision.
+                <p className="text-slate-500">Name</p>
+                <p className="font-medium text-slate-800">
+                  {application.applicant_name}
                 </p>
               </div>
+              <div>
+                <p className="text-slate-500">Phone</p>
+                <p className="font-medium text-slate-800">
+                  {application.applicant_phone}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-500">Property</p>
+                <p className="font-medium text-slate-800">
+                  {application.property_name}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-500">Unit</p>
+                <p className="font-medium text-slate-800">
+                  {application.unit_code}
+                </p>
+              </div>
+            </div>
+
+            {/* ✅ FIX: Tenant History Notes (Always visible, shows fallback for new tenants) */}
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+                Past Tenancy Notes & History
+              </p>
+              {application.past_tenancy_notes &&
+              application.past_tenancy_notes.length > 0 ? (
+                <ul className="space-y-2">
+                  {application.past_tenancy_notes.map((note, idx) => (
+                    <li
+                      key={note.id || idx}
+                      className="text-xs bg-white p-2 rounded border border-slate-100"
+                    >
+                      <span className="font-bold text-slate-600">
+                        [{note.type}]
+                      </span>{" "}
+                      {note.content}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-600 italic bg-blue-50 p-3 rounded border border-blue-100">
+                  No prior tenancy history or notes found. This is a new
+                  applicant.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Decision Form */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-3">
+              Decision
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setDecision("approved")}
+                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${
+                  decision === "approved"
+                    ? "border-green-500 bg-green-50 text-green-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300"
+                }`}
+              >
+                ✅ Approve
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecision("rejected")}
+                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${
+                  decision === "rejected"
+                    ? "border-red-500 bg-red-50 text-red-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300"
+                }`}
+              >
+                ❌ Reject
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecision("escalated")}
+                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${
+                  decision === "escalated"
+                    ? "border-amber-500 bg-amber-50 text-amber-700"
+                    : "border-slate-200 text-slate-500 hover:border-slate-300"
+                }`}
+              >
+                ⬆️ Escalate
+              </button>
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">
+              Reason / Remarks{" "}
+              {decision !== "approved" && (
+                <span className="text-red-500">*</span>
+              )}
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={4}
+              placeholder="Add any remarks or reasons for your decision..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none resize-none"
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-200">
+              {error}
             </div>
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-6 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
-          {application.agency_can_approve ? (
-            <>
-              <button
-                onClick={() => handleDecision("reject")}
-                disabled={isProcessing}
-                className="px-6 py-2.5 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200 disabled:opacity-50"
-              >
-                Reject Application
-              </button>
-              <button
-                onClick={() => handleDecision("approve")}
-                disabled={isProcessing}
-                className="px-8 py-2.5 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 disabled:opacity-50"
-              >
-                Approve & Create Tenancy
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => handleDecision("escalate")}
-              disabled={isProcessing}
-              className="px-8 py-2.5 bg-primary text-white font-bold rounded-lg shadow-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2 justify-center"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 7l5 5m0 0l-5 5m5-5H6"
-                />
-              </svg>
-              Escalate to Landlord
-            </button>
-          )}
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="px-6 py-2 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Processing...
+              </>
+            ) : (
+              "Submit Decision"
+            )}
+          </button>
         </div>
       </div>
     </div>

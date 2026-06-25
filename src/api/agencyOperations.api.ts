@@ -1,4 +1,5 @@
 import apiClient from "@/api/axios";
+import { endpoints } from "@/config/endpoints"; // ✅ Import central registry
 
 // ==========================================
 // INTERFACES
@@ -18,10 +19,16 @@ export interface AgencyApplication {
   property_name: string;
   landlord_name: string;
   unit_code: string;
-  status: "pending" | "under_review" | "approved" | "rejected" | "escalated";
+  status:
+    | "pending"
+    | "under_review"
+    | "approved"
+    | "rejected"
+    | "escalated"
+    | "cancelled"
+    | "expired";
   past_tenancy_notes: TenancyNote[];
   submitted_at: string;
-  // ✅ DELEGATION CHECK: Can the agency approve this, or must they escalate to the landlord?
   agency_can_approve: boolean;
 }
 
@@ -52,107 +59,138 @@ export interface AgencyTermination {
 // API METHODS
 // ==========================================
 export const agencyOperationsApi = {
+  /**
+   * Fetches applications for the logged-in manager/agency.
+   */
   getApplications: async (): Promise<AgencyApplication[]> => {
     try {
-      const response = await apiClient.get(
-        "/api/agencies/1/operations/applications/",
+      const response = await apiClient.get(endpoints.APPLICATIONS.LIST);
+      const data = response.data.results || response.data;
+
+      // ✅ CRITICAL FIX: Explicitly define "terminal" (finished) states.
+      // These applications are completely removed from the Operations Queue.
+      // This hides: approved, rejected, cancelled (by tenant), and expired applications.
+      const terminalStatuses = ["approved", "rejected", "cancelled", "expired"];
+
+      const actionableApps = data.filter(
+        (app: any) => !terminalStatuses.includes(app.status),
       );
-      return response.data;
+
+      return actionableApps.map((app: any) => ({
+        id: app.id,
+        applicant_name:
+          app.reviewer_context?.applicant_name ||
+          app.applicant_name ||
+          app.applicant_email ||
+          "Unknown Applicant",
+        applicant_phone:
+          app.reviewer_context?.applicant_phone || app.applicant_phone || "N/A",
+        property_name: app.property_title || "Unknown Property",
+        landlord_name: app.reviewer_context?.landlord_name || "N/A",
+        unit_code: app.unit_code || "N/A",
+        status: app.status,
+        submitted_at: app.created_at,
+        agency_can_approve: app.reviewer_context?.can_approve ?? true,
+        past_tenancy_notes: app.reviewer_context?.tenant_history_notes || [],
+      }));
     } catch (error) {
-      return [
-        {
-          id: 101,
-          applicant_name: "David Miller",
-          applicant_phone: "+254712345678",
-          property_name: "Kilimani Heights",
-          landlord_name: "Sarah Connor",
-          unit_code: "B-204",
-          status: "pending",
-          submitted_at: "2026-06-18",
-          agency_can_approve: true,
-          past_tenancy_notes: [
-            {
-              id: 1,
-              type: "payment",
-              content:
-                "Paid rent 2 days late in Oct 2025. Waived penalty as goodwill.",
-              date: "2025-10-05",
-              author: "System Admin",
-            },
-            {
-              id: 2,
-              type: "behavior",
-              content:
-                "Excellent tenant, no noise complaints. Kept unit very clean.",
-              date: "2025-11-12",
-              author: "Caretaker James",
-            },
-          ],
-        },
-        {
-          id: 102,
-          applicant_name: "Alice Smith",
-          applicant_phone: "+254700000000",
-          property_name: "Lavington Villas",
-          landlord_name: "John Doe",
-          unit_code: "V-02",
-          status: "pending",
-          submitted_at: "2026-06-19",
-          agency_can_approve: false, // ❌ Partial delegation: Must escalate
-          past_tenancy_notes: [
-            {
-              id: 3,
-              type: "maintenance",
-              content:
-                "Caused minor damage to bathroom fixtures. Deducted from deposit.",
-              date: "2024-05-20",
-              author: "Landlord John",
-            },
-          ],
-        },
-      ];
+      console.error("Failed to fetch applications", error);
+      return [];
     }
   },
 
+  /**
+   * Fetches transfer requests from the Tenancy app.
+   */
   getTransfers: async (): Promise<AgencyTransfer[]> => {
-    return [
-      {
-        id: 201,
-        tenant_name: "Mike Ross",
-        from_property: "Kilimani Heights",
-        from_unit: "A-101",
-        to_property: "Kilimani Heights",
-        to_unit: "C-301",
-        reason: "Need larger space for growing family",
-        status: "pending",
-        submitted_at: "2026-06-15",
-      },
-    ];
+    try {
+      const response = await apiClient.get(endpoints.TENANCIES.TRANSFERS);
+      const data = response.data.results || response.data;
+
+      return data.map((t: any) => ({
+        id: t.id,
+        tenant_name: t.tenant_name || t.tenant_email || "Unknown Tenant",
+        from_property: t.from_property_title || "Unknown",
+        from_unit: t.from_unit_code || "N/A",
+        to_property: t.to_property_title || "Unknown",
+        to_unit: t.to_unit_code || "N/A",
+        reason: t.reason || "",
+        status: t.transfer_status || t.status || "pending",
+        submitted_at: t.created_at || new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.error("Failed to fetch transfers", error);
+      return [];
+    }
   },
 
+  /**
+   * Fetches termination/move-out notices from the Tenancy app.
+   */
   getTerminations: async (): Promise<AgencyTermination[]> => {
-    return [
-      {
-        id: 301,
-        tenant_name: "Harvey Specter",
-        property_name: "Westlands Plaza",
-        unit_code: "Shop-1",
-        notice_type: "tenant_request",
-        proposed_move_out_date: "2026-07-31",
-        status: "pending_review",
-        notes: "Relocating business to another city.",
-      },
-    ];
+    try {
+      const response = await apiClient.get(endpoints.TENANCIES.TERMINATIONS);
+      const data = response.data.results || response.data;
+
+      return data.map((term: any) => ({
+        id: term.id,
+        tenant_name: term.tenant_name || term.tenant_email || "Unknown Tenant",
+        property_name: term.property_title || "Unknown Property",
+        unit_code: term.unit_code || "N/A",
+        notice_type: term.termination_type || "tenant_request",
+        proposed_move_out_date:
+          term.intended_vacate_date || term.proposed_move_out_date || "",
+        status: term.status || "pending_review",
+        notes: term.notes || "",
+      }));
+    } catch (error) {
+      console.error("Failed to fetch terminations", error);
+      return [];
+    }
   },
 
+  /**
+   * Submits a decision (approve/reject/escalate) for a rental application.
+   */
   makeDecision: async (
     applicationId: number,
-    decision: "approve" | "reject" | "escalate",
+    decision: "approved" | "rejected" | "escalated",
     reason: string,
   ) => {
-    return apiClient.post(`/api/applications/${applicationId}/make_decision/`, {
+    return apiClient.post(endpoints.APPLICATIONS.MAKE_DECISION(applicationId), {
       decision,
       reason,
     });
+  },
+
+  /**
+   * Submits a decision for a transfer request.
+   */
+  decideTransfer: async (
+    transferId: number,
+    decision: "approved" | "rejected",
+    reason: string,
+  ) => {
+    return apiClient.post(
+      `${endpoints.TENANCIES.LIST}${transferId}/decide_transfer/`,
+      {
+        decision,
+        reason,
+      },
+    );
+  },
+
+  /**
+   * Submits a decision for a termination/move-out notice.
+   */
+  decideTermination: async (
+    terminationId: number,
+    decision: "approved" | "rejected",
+    reason: string,
+  ) => {
+    return apiClient.post(
+      `${endpoints.TENANCIES.LIST}${terminationId}/decide_termination/`,
+      { decision, reason },
+    );
   },
 };

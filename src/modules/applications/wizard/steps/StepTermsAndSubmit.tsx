@@ -7,10 +7,8 @@ import { useAuthStore } from "@/store/auth.store";
 import { applicationsApi, TenantHistorySummary } from "@/api/applications.api";
 import { propertiesApi } from "@/api/properties.api";
 
-// ✅ BULLETPROOF CURRENCY PARSER: Handles strings, numbers, commas, and nulls
 const formatCurrency = (value: any): string => {
   if (value === null || value === undefined || value === "") return "N/A";
-  // Remove commas if they exist, then parse to float
   const num = parseFloat(String(value).replace(/,/g, ""));
   if (isNaN(num)) return "N/A";
   return num.toLocaleString();
@@ -29,12 +27,14 @@ export default function StepTermsAndSubmit() {
     isSubmitting,
     error,
     resetWizard,
+    setWizardLocked, // ✅ EXTRACT: Needed to disable the browser navigation lock
   } = useApplicationWizardStore();
 
   const [unitDetails, setUnitDetails] = useState<any>(null);
   const [tenantHistory, setTenantHistory] =
     useState<TenantHistorySummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -49,7 +49,7 @@ export default function StepTermsAndSubmit() {
           setUnitDetails(unitData);
         } catch (unitErr: any) {
           console.warn(
-            "⚠️ Could not fetch unit details (403/Network). Using wizard fallback data.",
+            "⚠️ Could not fetch unit details. Using wizard fallback data.",
             unitErr,
           );
         }
@@ -90,26 +90,87 @@ export default function StepTermsAndSubmit() {
 
       if (applicationType) payload.append("application_type", applicationType);
 
+      // 1. Submit the application to the backend
       await applicationsApi.submitApplication(payload);
 
+      // 2. ✅ INSTANTLY SHOW SUCCESS SCREEN
+      setIsSuccess(true);
+
+      // 3. ✅ CRITICAL: DISABLE THE WIZARD LOCK
+      // This removes the beforeunload listener, preventing the "Stay/Leave" browser prompt.
+      setWizardLocked(false);
+
+      // 4. Fetch the next route BEFORE resetting the wizard
+      let nextRoute = "/marketplace";
+      try {
+        const userState = await useAuthStore.getState().fetchUserState();
+        if (userState?.next_route) {
+          nextRoute = userState.next_route;
+        }
+      } catch (stateErr) {
+        console.warn(
+          "⚠️ Could not fetch user state, using fallback route.",
+          stateErr,
+        );
+      }
+
+      // 5. Clear the wizard state
       resetWizard();
 
-      if (user?.role === "tenant") {
-        router.push("/dashboard/tenant");
-      } else {
-        router.push("/dashboard");
-      }
+      // 6. Force hard navigation to the backend's chosen destination
+      window.location.href = nextRoute;
     } catch (err: any) {
-      console.error("Application submission failed:", err);
-      alert(
-        err?.response?.data?.detail ||
-          err?.response?.data?.error ||
-          "Failed to submit application. Please try again.",
-      );
+      console.error("❌ Application submission failed:", err);
+
+      const drfErrors = err.response?.data;
+      let errorMessage =
+        "Failed to submit application. Please check the form and try again.";
+
+      if (drfErrors) {
+        if (drfErrors.detail) errorMessage = drfErrors.detail;
+        else if (drfErrors.target_unit_id)
+          errorMessage = drfErrors.target_unit_id[0];
+        else if (drfErrors.anticipated_move_in_date)
+          errorMessage = drfErrors.anticipated_move_in_date[0];
+        else if (drfErrors.non_field_errors)
+          errorMessage = drfErrors.non_field_errors[0];
+      }
+
+      alert(errorMessage);
     } finally {
       setSubmitting(false);
     }
   };
+
+  if (isSuccess) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            className="w-8 h-8"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M4.5 12.75l6 6 9-13.5"
+            />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">
+          Application Submitted Successfully!
+        </h2>
+        <p className="text-slate-500">
+          Please wait while we redirect you to the next step...
+        </p>
+        <div className="mt-6 animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -119,10 +180,6 @@ export default function StepTermsAndSubmit() {
     );
   }
 
-  // ✅ BULLETPROOF FALLBACKS:
-  // 1. Try to get from API (unitDetails)
-  // 2. Fallback to Zustand Store (formData) if API failed
-  // 3. Format safely using the parser
   const displayUnitCode =
     unitDetails?.unit_code ||
     formData.target_unit_code ||
@@ -237,7 +294,6 @@ export default function StepTermsAndSubmit() {
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
         <h3 className="font-bold text-primary-dark">Application Summary</h3>
 
-        {/* Unit Details (Using Fallbacks if API returned 403) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm pb-4 border-b border-slate-200">
           <div>
             <p className="text-xs text-slate-500 uppercase">Property</p>
@@ -259,7 +315,6 @@ export default function StepTermsAndSubmit() {
           </div>
         </div>
 
-        {/* Applicant Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-xs text-slate-500 uppercase">Applicant Name</p>

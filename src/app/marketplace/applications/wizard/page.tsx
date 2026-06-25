@@ -8,8 +8,8 @@ import {
 } from "@/store/applicationWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import ApplicationWizardGuard from "@/guards/ApplicationwizardGuard";
-import apiClient from "@/api/axios"; // ✅ Added for profile fetch
-import { endpoints } from "@/config/endpoints"; // ✅ Added for profile fetch
+import apiClient from "@/api/axios";
+import { endpoints } from "@/config/endpoints";
 
 import { useWizardLock } from "@/hooks/useWizardLock";
 
@@ -29,12 +29,14 @@ function ApplicationWizardContent() {
     updateFormData,
     resetWizard,
     isSubmitting,
+    wizardLocked, // ✅ ADDED: Extract the lock state
   } = useApplicationWizardStore();
 
-  useWizardLock(true);
+  // ✅ Pass the dynamic lock state to the hook
+  // When wizardLocked becomes false (after submission), the hook removes the browser event listeners.
+  useWizardLock(wizardLocked);
 
   useEffect(() => {
-    // 1. Extract Application Type
     let type = searchParams.get("type") as ApplicationType | null;
     if (!type) {
       if (pathname.includes("/transfer")) type = "transfer";
@@ -43,7 +45,6 @@ function ApplicationWizardContent() {
     }
     if (type) setApplicationType(type);
 
-    // 2. Extract Property & Unit IDs from URL
     const propertyId = searchParams.get("property_id");
     const unitGroupId = searchParams.get("unit_group_id");
 
@@ -55,7 +56,6 @@ function ApplicationWizardContent() {
       updateFormData(urlUpdates);
     }
 
-    // 3. ✅ BULLETPROOF AUTO-FILL USER DATA
     if (user) {
       const currentFormData = useApplicationWizardStore.getState().formData;
       const u = user as any;
@@ -64,7 +64,6 @@ function ApplicationWizardContent() {
       let phone = u.phone_number || u.phone || u.profile?.phone_number || "";
       let email = u.email || u.profile?.email || "";
 
-      // 🚨 CRITICAL FIX: If the login response didn't include profile data, fetch it!
       if (!fullName || !phone || !email) {
         apiClient
           .get(endpoints.PROFILE.ME)
@@ -72,25 +71,17 @@ function ApplicationWizardContent() {
             const profileData = res.data;
             const profileUpdates: any = {};
 
-            if (!fullName && profileData.full_name) {
+            if (!fullName && profileData.full_name)
               profileUpdates.full_name = profileData.full_name;
-              fullName = profileData.full_name;
-            }
-            if (!phone && profileData.phone_number) {
+            if (!phone && profileData.phone_number)
               profileUpdates.phone_number = profileData.phone_number;
-              phone = profileData.phone_number;
-            }
-            if (!email && profileData.email) {
+            if (!email && profileData.email)
               profileUpdates.email = profileData.email;
-              email = profileData.email;
-            }
 
-            // Update the wizard form
             if (Object.keys(profileUpdates).length > 0) {
               updateFormData(profileUpdates);
             }
 
-            // ✅ Update the global auth store so other components have the data too
             useAuthStore.getState().setUser({
               ...u,
               full_name: profileData.full_name || u.full_name,
@@ -99,10 +90,11 @@ function ApplicationWizardContent() {
             });
           })
           .catch((err) => {
-            console.error("Failed to fetch profile for wizard", err);
+            if (err.response?.status !== 401) {
+              console.error("Failed to fetch profile for wizard", err);
+            }
           });
       } else {
-        // If we already have the data, just update the form if it's currently empty
         const profileUpdates: any = {};
         if (!currentFormData.full_name && fullName)
           profileUpdates.full_name = fullName;
@@ -226,14 +218,14 @@ function ApplicationWizardContent() {
             <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
               <div
                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out"
-                style={{ width: `${progress}%` }}
+                style={{ width: `${Math.min(progress, 100)}%` }}
               ></div>
             </div>
             <div className="flex justify-between mt-2 text-xs font-medium text-slate-500">
               <span>
                 Step {currentStep} of {totalSteps}
               </span>
-              <span>{Math.round(progress)}% Complete</span>
+              <span>{Math.round(Math.min(progress, 100))}% Complete</span>
             </div>
           </div>
 
@@ -250,18 +242,15 @@ function ApplicationWizardContent() {
               &larr; Back
             </button>
 
-            <button
-              onClick={handleNextStep}
-              disabled={isSubmitting}
-              className="px-8 py-2 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-70 flex items-center gap-2"
-            >
-              {isSubmitting
-                ? "Processing..."
-                : currentStep === totalSteps
-                  ? "Submit Application"
-                  : "Next Step"}{" "}
-              &rarr;
-            </button>
+            {currentStep < totalSteps && (
+              <button
+                onClick={handleNextStep}
+                disabled={isSubmitting}
+                className="px-8 py-2 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-70 flex items-center gap-2"
+              >
+                Next Step &rarr;
+              </button>
+            )}
           </div>
         </div>
       </div>

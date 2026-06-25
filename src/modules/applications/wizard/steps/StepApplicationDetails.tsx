@@ -82,8 +82,17 @@ export default function StepApplicationDetails() {
         } else if (formData.preferredFloor) {
           filterUnitsByFloor(units, formData.preferredFloor, floors);
         }
-      } catch (err) {
-        console.error("Failed to fetch units", err);
+      } catch (err: any) {
+        // ✅ SILENCE 401 & CANCELED ERRORS:
+        // If it's a 401, the session is dead and the user is being redirected.
+        // If it's 'canceled' or 'ECONNABORTED', the browser killed the request during redirect.
+        const is401 = err.response?.status === 401;
+        const isCanceled =
+          err.code === "ECONNABORTED" || err.message === "canceled";
+
+        if (!is401 && !isCanceled) {
+          console.error("Failed to fetch units", err);
+        }
       } finally {
         setIsLoadingUnits(false);
       }
