@@ -17,23 +17,20 @@ export interface PublicUnitGroup {
   service_charge: string;
   billing_cycle: string;
   capacity: number;
+  available_units: number; // ✅ ADDED: Fixes the TypeScript error on the listing page
   cover_photo?: string | null;
   is_active: boolean;
   allows_pets_override?: boolean | null;
 }
-
-// ... (keep your other interfaces exactly the same) ...
 
 export interface PublicMedia {
   id: number;
   file: string;
   media_type: string;
   caption?: string | null;
-  display_order?: number; // ✅ ADDED THIS LINE
-  unit_group: number | null; 
+  display_order?: number;
+  unit_group: number | null;
 }
-
-// ... (keep the rest of the file the same) ...
 
 export interface Listing {
   id: number;
@@ -59,8 +56,6 @@ export interface ListingDetail extends Listing {
     amenities: any;
   };
   unit_group_availability: any;
-
-  // ✅ ADDED: The new fields from the Public API Bridge
   available_unit_groups: PublicUnitGroup[];
   property_media: PublicMedia[];
 }
@@ -109,13 +104,11 @@ export const marketplaceApi = {
     return response.data;
   },
 
-  // ✅ Fetch Featured Listings for the Hero Section
   getFeaturedListings: async (): Promise<{ results: Listing[] }> => {
     const response = await apiClient.get(endpoints.MARKETPLACE.FEATURED);
     return response.data;
   },
 
-  // ✅ Fetch Nearby Listings based on GPS
   getNearbyListings: async (
     lat: number,
     lng: number,
@@ -127,7 +120,6 @@ export const marketplaceApi = {
     return response.data;
   },
 
-  // Saved Listings (Watchlist) Methods
   getSavedListings: async (): Promise<PaginatedResponse<SavedListing>> => {
     const response = await apiClient.get(endpoints.MARKETPLACE.SAVED);
     return response.data;

@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { marketplaceApi } from "@/api/marketplace.api";
 import { PublicMedia, PublicUnitGroup } from "@/api/marketplace.api";
-import { getMediaUrl } from "@/utils/media";
 import MediaGallery from "@/components/Marketplace/MediaGallery";
 import PropertyInfoCard from "@/components/Marketplace/PropertyInfoCard";
 import UnitGroupsSection from "@/components/Marketplace/UnitGroupSection";
@@ -29,7 +28,7 @@ export default function ListingDetailPage() {
         const listingData = await marketplaceApi.getListingDetail(Number(id));
         setListing(listingData);
 
-        // Extract Unit Groups from public response
+        // ✅ Extract Unit Groups (Backend now provides accurate available_units counts)
         setUnitGroups(listingData.available_unit_groups || []);
 
         // Separate Media into main vs grouped
@@ -46,7 +45,6 @@ export default function ListingDetailPage() {
           }
         });
 
-        // Fallback: If no main media, use first few grouped images
         let displayMedia = mainMedia;
         if (displayMedia.length === 0) {
           const allGroupedImages = Object.values(grouped)
@@ -69,7 +67,6 @@ export default function ListingDetailPage() {
     if (id) fetchData();
   }, [id]);
 
-  // Loading Skeleton
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-12">
@@ -79,7 +76,6 @@ export default function ListingDetailPage() {
             <div className="lg:col-span-2 space-y-4">
               <div className="h-8 bg-slate-200 rounded w-3/4"></div>
               <div className="h-4 bg-slate-200 rounded w-full"></div>
-              <div className="h-4 bg-slate-200 rounded w-5/6"></div>
             </div>
             <div className="h-[500px] bg-slate-200 rounded-2xl"></div>
           </div>
@@ -88,7 +84,6 @@ export default function ListingDetailPage() {
     );
   }
 
-  // Error State
   if (error || !listing) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-20 text-center">
@@ -106,6 +101,13 @@ export default function ListingDetailPage() {
   const lng = listing.property_details?.location?.longitude;
   const hasUnitGroups = unitGroups.length > 0;
 
+  // ✅ Calculate total available units across all groups for the summary badge
+  const totalAvailableUnits = unitGroups.reduce(
+    (sum, group) => sum + (group.available_units || 0),
+    0,
+  );
+  const isMultiUnitProperty = unitGroups.length > 1 || totalAvailableUnits > 1;
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -120,8 +122,30 @@ export default function ListingDetailPage() {
           </span>
         </nav>
 
-        {/* Main Gallery (Resized & Clickable) */}
+        {/* Main Gallery */}
         <MediaGallery media={media} coverPhoto={listing.cover_photo} />
+
+        {/* ✅ NEW: AVAILABILITY BADGE FOR MULTI-UNIT PROPERTIES */}
+        {isMultiUnitProperty && (
+          <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-green-800">
+                High Availability
+              </h3>
+              <p className="text-sm text-green-700">
+                This property has multiple units currently available for rent.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-extrabold text-green-900">
+                {totalAvailableUnits}
+              </p>
+              <p className="text-xs font-bold text-green-700 uppercase">
+                Units Available
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-10">
           {/* Left Column: Details */}
@@ -137,7 +161,7 @@ export default function ListingDetailPage() {
               </p>
             </div>
 
-            {/* ✅ LOCATION WITH GOOGLE MAPS LINK */}
+            {/* Location */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
               <h2 className="text-2xl font-bold text-primary-dark mb-4">
                 Location
@@ -166,24 +190,6 @@ export default function ListingDetailPage() {
                   <p className="font-medium text-slate-800">
                     {listing.location_summary || "Address not specified"}
                   </p>
-                  {listing.property_details?.location?.city && (
-                    <p className="text-sm text-slate-500 mt-1">
-                      {listing.property_details.location.city}
-                      {listing.property_details.location.county
-                        ? `, ${listing.property_details.location.county}`
-                        : ""}
-                      {listing.property_details.location.estate
-                        ? ` (${listing.property_details.location.estate})`
-                        : ""}
-                    </p>
-                  )}
-                  {listing.property_details?.location?.landmark && (
-                    <p className="text-xs text-slate-400 mt-1">
-                      Near: {listing.property_details.location.landmark}
-                    </p>
-                  )}
-
-                  {/* ✅ GOOGLE MAPS LINK WITH ACTUAL COORDINATES */}
                   {lat && lng && (
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
@@ -212,9 +218,10 @@ export default function ListingDetailPage() {
               </div>
             </div>
 
-            {/* ✅ UNIT GROUPS SECTION (With scroll target ID) */}
+            {/* Unit Groups Section */}
             {hasUnitGroups && (
               <div id="unit-groups-section" className="scroll-mt-24">
+                {/* Note: Ensure your UnitGroupsSection component displays the `available_units` property from the group object */}
                 <UnitGroupsSection
                   unitGroups={unitGroups}
                   groupedMedia={groupedMedia}

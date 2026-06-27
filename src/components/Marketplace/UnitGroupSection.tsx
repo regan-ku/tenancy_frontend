@@ -36,17 +36,12 @@ export default function UnitGroupsSection({
     setIsLightboxOpen(true);
   };
 
-  // ✅🚨 AUTHENTICATION GATEWAY: Handles routing based on login status
   const handleApplyClick = (groupId: number) => {
-    // ✅ CRITICAL FIX: URL now exactly matches your folder structure
-    // (src/app/marketplace/applications/wizard/page.tsx)
     const applicationUrl = `/marketplace/applications/wizard?type=rental&property_id=${propertyId}&unit_group_id=${groupId}`;
 
     if (!isAuthenticated) {
-      // Not logged in -> Send to login with a redirect back to the wizard
       router.push(`/login?redirect=${encodeURIComponent(applicationUrl)}`);
     } else {
-      // Logged in -> Go straight to the application wizard
       router.push(applicationUrl);
     }
   };
@@ -71,7 +66,6 @@ export default function UnitGroupsSection({
             (m) => m.media_type === "image" && m.file,
           );
 
-          // Calculate Estimated Move-in Cost
           const baseRent = parseFloat(group.base_rent_amount) || 0;
           const deposit = parseFloat(group.deposit_amount) || 0;
           const serviceCharge = parseFloat(group.service_charge) || 0;
@@ -82,10 +76,12 @@ export default function UnitGroupsSection({
               ? getMediaUrl(images[0].file)
               : getMediaUrl(group.cover_photo);
 
-          // Format the UNIT TYPE (e.g., "one_bedroom" -> "One Bedroom")
           const formattedUnitType = group.unit_type
             .replace(/_/g, " ")
             .replace(/\b\w/g, (l) => l.toUpperCase());
+
+          // ✅ FIX: Safely get available units with a fallback to 0
+          const availableCount = group.available_units || 0;
 
           return (
             <div
@@ -106,9 +102,9 @@ export default function UnitGroupsSection({
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
 
-                  {/* Availability Badge */}
+                  {/* ✅ CRITICAL FIX: Display available_units instead of capacity */}
                   <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm text-primary-dark text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
-                    {group.capacity} Unit{group.capacity > 1 ? "s" : ""}{" "}
+                    {availableCount} Unit{availableCount !== 1 ? "s" : ""}{" "}
                     Available
                   </div>
 
@@ -223,12 +219,19 @@ export default function UnitGroupsSection({
                   )}
                 </div>
 
-                {/* ✅ APPLY BUTTON (Now points to the correct marketplace wizard path) */}
+                {/* ✅ APPLY BUTTON: Disabled if 0 units are available */}
                 <button
                   onClick={() => handleApplyClick(group.id)}
-                  className="block w-full text-center bg-secondary hover:bg-secondary/90 text-white font-bold py-3.5 rounded-xl transition-colors shadow-lg hover:shadow-xl"
+                  disabled={availableCount === 0}
+                  className={`block w-full text-center font-bold py-3.5 rounded-xl transition-colors shadow-lg ${
+                    availableCount === 0
+                      ? "bg-slate-200 text-slate-500 cursor-not-allowed shadow-none"
+                      : "bg-secondary hover:bg-secondary/90 text-white hover:shadow-xl"
+                  }`}
                 >
-                  Apply for {formattedUnitType} →
+                  {availableCount === 0
+                    ? "Fully Occupied"
+                    : `Apply for ${formattedUnitType} →`}
                 </button>
               </div>
             </div>

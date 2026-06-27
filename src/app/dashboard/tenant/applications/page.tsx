@@ -17,7 +17,6 @@ export default function TenantApplicationsPage() {
   const [notices, setNotices] = useState<TenantNotice[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal States
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [transferTarget, setTransferTarget] = useState<PersonalTenancy | null>(
     null,
@@ -42,11 +41,19 @@ export default function TenantApplicationsPage() {
   }, []);
 
   const refreshData = () => {
-    // In production, re-fetch data here
     setShowRentalModal(false);
     setTransferTarget(null);
     setNoticeTarget(null);
+    // In production, re-fetch data here
   };
+
+  // ✅ Group applications by lifecycle stage
+  const activeApps = applications.filter((app) =>
+    ["pending", "under_review", "approved"].includes(app.status),
+  );
+  const pastApps = applications.filter((app) =>
+    ["completed", "rejected", "cancelled", "expired"].includes(app.status),
+  );
 
   return (
     <div className="space-y-8">
@@ -129,15 +136,12 @@ export default function TenantApplicationsPage() {
         </div>
       </div>
 
-      {/* 2. PENDING APPLICATIONS & NOTICES */}
+      {/* 2. ACTIVE REQUESTS */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">
-            Pending Applications & Notices
-          </h2>
+          <h2 className="text-lg font-bold text-slate-800">Active Requests</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Track the status of your requests. The system will notify you of any
-            approvals or rejections.
+            Track the status of your current applications and notices.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -151,8 +155,7 @@ export default function TenantApplicationsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {/* Render Applications */}
-              {applications.map((app) => (
+              {activeApps.map((app) => (
                 <tr
                   key={app.id}
                   className="hover:bg-slate-50 transition-colors"
@@ -182,7 +185,6 @@ export default function TenantApplicationsPage() {
                   </td>
                 </tr>
               ))}
-              {/* Render Notices */}
               {notices.map((notice) => (
                 <tr
                   key={notice.id}
@@ -208,13 +210,13 @@ export default function TenantApplicationsPage() {
                   </td>
                 </tr>
               ))}
-              {applications.length === 0 && notices.length === 0 && (
+              {activeApps.length === 0 && notices.length === 0 && (
                 <tr>
                   <td
                     colSpan={4}
                     className="px-6 py-12 text-center text-slate-400"
                   >
-                    No pending applications or notices.
+                    No active requests.
                   </td>
                 </tr>
               )}
@@ -222,6 +224,64 @@ export default function TenantApplicationsPage() {
           </table>
         </div>
       </div>
+
+      {/* ✅ 3. PAST APPLICATIONS (Completed, Rejected, Cancelled) */}
+      {pastApps.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-bold text-slate-500">
+              Past Applications
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Previous applications and their final outcomes.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left opacity-80">
+              <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
+                <tr>
+                  <th className="px-6 py-4">Request Type</th>
+                  <th className="px-6 py-4">Property / Unit Details</th>
+                  <th className="px-6 py-4">Submitted</th>
+                  <th className="px-6 py-4">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {pastApps.map((app) => (
+                  <tr
+                    key={app.id}
+                    className="hover:bg-slate-50 transition-colors"
+                  >
+                    <td className="px-6 py-4">
+                      <span
+                        className={`text-xs font-bold px-2 py-1 rounded uppercase ${app.type === "rental" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}
+                      >
+                        {app.type === "rental" ? "New Rental" : "Transfer"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-slate-800">
+                        {app.property_name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {app.type === "transfer"
+                          ? `From ${app.unit_code} → To ${app.target_unit_code}`
+                          : `Target: ${app.unit_code}`}
+                      </p>
+                    </td>
+                    <td className="px-6 py-4 text-slate-500 text-xs">
+                      {app.submitted_at}
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={app.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       {showRentalModal && <RentalApplicationModal onClose={refreshData} />}
@@ -235,20 +295,32 @@ export default function TenantApplicationsPage() {
   );
 }
 
+// ✅ Updated Status Badge with new lifecycle states
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-700",
     under_review: "bg-blue-100 text-blue-700",
-    pending_review: "bg-blue-100 text-blue-700",
     approved: "bg-green-100 text-green-700",
+    completed: "bg-indigo-100 text-indigo-700", // ✅ NEW
     rejected: "bg-red-100 text-red-700",
+    cancelled: "bg-slate-100 text-slate-600", // ✅ NEW
+    expired: "bg-slate-100 text-slate-600", // ✅ NEW
+    pending_review: "bg-blue-100 text-blue-700",
     disputed: "bg-orange-100 text-orange-700",
   };
+
+  const labels: Record<string, string> = {
+    completed: "Converted to Tenancy",
+    cancelled: "Cancelled",
+    expired: "Expired",
+    approved: "Awaiting Payment",
+  };
+
   return (
     <span
       className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${colors[status] || "bg-slate-100 text-slate-600"}`}
     >
-      {status.replace("_", " ")}
+      {labels[status] || status.replace("_", " ")}
     </span>
   );
 }

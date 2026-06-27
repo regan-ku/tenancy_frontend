@@ -21,6 +21,9 @@ export interface UnitGroup {
   is_active: boolean;
   cover_photo: string;
   units_count: number;
+  actual_units_count?: number;
+  occupied_units?: number;
+  available_units?: number;
 }
 
 export interface Unit {
@@ -56,7 +59,9 @@ export interface UnitMedia {
   unit_group_id: number | null;
 }
 
+// ✅ FIXED: Added "pending_payment" to tenancy_status to match backend states
 export interface TenantFinancialInfo {
+  tenancy_id: number;
   tenant_id: number;
   tenant_name: string;
   tenant_email: string;
@@ -71,7 +76,13 @@ export interface TenantFinancialInfo {
   last_payment_date: string;
   last_payment_amount: number;
   next_billing_date: string;
-  tenancy_status: "active" | "pending" | "terminated";
+  tenancy_status:
+    | "active"
+    | "pending"
+    | "pending_payment" // ✅ ADDED: Matches backend tenancy states
+    | "terminated"
+    | "suspended"
+    | "extended";
   tenancy_start_date: string;
   tenancy_end_date: string;
   next_of_kin: {
@@ -117,7 +128,6 @@ export const agencyUnitManagementApi = {
     return response.data;
   },
 
-  // ✅ NEW: DELETE UNIT GROUP (Backend enforces: cannot delete if occupied units exist)
   deleteUnitGroup: async (
     propertyId: number,
     groupId: number,
@@ -156,7 +166,6 @@ export const agencyUnitManagementApi = {
     return response.data;
   },
 
-  // ✅ NEW: ADD UNIT TO EXISTING GROUP (Inherits all group details automatically)
   addUnitToGroup: async (
     propertyId: number,
     groupId: number,
@@ -172,7 +181,6 @@ export const agencyUnitManagementApi = {
     return response.data;
   },
 
-  // ✅ NEW: DELETE UNIT (Backend enforces: cannot delete if unit is occupied)
   deleteUnit: async (propertyId: number, unitId: number): Promise<void> => {
     await apiClient.delete(
       endpoints.PROPERTIES.UNIT_DETAIL(propertyId, unitId),

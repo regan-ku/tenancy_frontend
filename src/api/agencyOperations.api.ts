@@ -1,9 +1,16 @@
 import apiClient from "@/api/axios";
-import { endpoints } from "@/config/endpoints"; // ✅ Import central registry
+import { endpoints } from "@/config/endpoints";
 
 // ==========================================
 // INTERFACES
 // ==========================================
+
+export type ApplicationType =
+  | "rental"
+  | "transfer"
+  | "termination"
+  | "extension";
+
 export interface TenancyNote {
   id: number;
   type: "behavior" | "payment" | "maintenance" | "general";
@@ -12,8 +19,24 @@ export interface TenancyNote {
   author: string;
 }
 
+// ✅ UPDATED: Added tenancy_id for settlement tracking
+export interface FinancialStatus {
+  rent_amount: number;
+  deposit_amount: number;
+  service_charge_amount: number;
+  deposit_paid: boolean;
+  deposit_waived: boolean;
+  service_charge_paid: boolean;
+  service_charge_waived: boolean;
+  rent_paid: boolean;
+  rent_waived: boolean;
+  tenancy_status: string;
+  tenancy_id?: number; // ✅ NEW: For settlement modal targeting
+}
+
 export interface AgencyApplication {
   id: number;
+  application_type: ApplicationType;
   applicant_name: string;
   applicant_phone: string;
   property_name: string;
@@ -26,65 +49,156 @@ export interface AgencyApplication {
     | "rejected"
     | "escalated"
     | "cancelled"
-    | "expired";
+    | "expired"
+    | "completed";
   past_tenancy_notes: TenancyNote[];
   submitted_at: string;
   agency_can_approve: boolean;
+  financial_status: FinancialStatus;
+
+  // Transfer specific fields
+  from_unit_code?: string;
+  from_property_name?: string;
+  to_unit_code?: string;
+  to_property_name?: string;
+  desired_move_in_date?: string;
+  transfer_reason?: string;
+
+  // Termination specific fields
+  proposed_move_out_date?: string;
+  termination_type?: string;
+  penalty_amount?: number;
+  termination_notes?: string;
+
+  // Extension specific fields
+  new_end_date?: string;
+  extension_reason?: string;
 }
 
+// ✅ UPDATED: Added financial_status so UI can show "Awaiting Payment" and "Apply Waiver"
 export interface AgencyTransfer {
   id: number;
   tenant_name: string;
+  applicant_phone: string;
   from_property: string;
   from_unit: string;
   to_property: string;
   to_unit: string;
   reason: string;
-  status: "pending" | "approved" | "rejected";
+  desired_move_in_date: string | null;
+  status:
+    | "pending"
+    | "under_review"
+    | "approved"
+    | "rejected"
+    | "escalated"
+    | "cancelled"
+    | "expired"
+    | "completed";
   submitted_at: string;
+  financial_status: FinancialStatus;
 }
 
+// ✅ UPDATED: Added financial_status and penalty_amount for settlement tracking
 export interface AgencyTermination {
   id: number;
   tenant_name: string;
+  applicant_phone: string;
   property_name: string;
   unit_code: string;
-  notice_type: "tenant_request" | "breach" | "expiry";
+  notice_type:
+    | "tenant_request"
+    | "breach"
+    | "expiry"
+    | "landlord_request"
+    | "mutual";
   proposed_move_out_date: string;
-  status: "pending_review" | "approved" | "disputed";
+  status:
+    | "pending"
+    | "under_review"
+    | "approved"
+    | "rejected"
+    | "escalated"
+    | "cancelled"
+    | "expired"
+    | "completed";
   notes: string;
+  financial_status: FinancialStatus;
+  penalty_amount?: number;
 }
+
+// ✅ NEW: Extension interface for completeness
+export interface AgencyExtension {
+  id: number;
+  tenant_name: string;
+  applicant_phone: string;
+  property_name: string;
+  unit_code: string;
+  new_end_date: string;
+  extension_reason: string;
+  status:
+    | "pending"
+    | "under_review"
+    | "approved"
+    | "rejected"
+    | "escalated"
+    | "cancelled"
+    | "expired"
+    | "completed";
+  submitted_at: string;
+}
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+
+// ✅ Helper to normalize API response (handles both array and paginated)
+const normalizeResponse = (data: any): any[] => {
+  if (Array.isArray(data)) return data;
+  if (data?.results && Array.isArray(data.results)) return data.results;
+  return [];
+};
+
+// ✅ Helper to build default financial status
+const buildDefaultFinancialStatus = (): FinancialStatus => ({
+  rent_amount: 0,
+  deposit_amount: 0,
+  service_charge_amount: 0,
+  deposit_paid: false,
+  deposit_waived: false,
+  service_charge_paid: false,
+  service_charge_waived: false,
+  rent_paid: false,
+  rent_waived: false,
+  tenancy_status: "no_tenancy",
+});
+
+// ✅ Terminal statuses that should be filtered out of actionable lists
+const TERMINAL_STATUSES = ["rejected", "cancelled", "expired", "completed"];
 
 // ==========================================
 // API METHODS
 // ==========================================
 export const agencyOperationsApi = {
-  /**
-   * Fetches applications for the logged-in manager/agency.
-   */
+  // ==========================================
+  // RENTAL APPLICATIONS
+  // ==========================================
   getApplications: async (): Promise<AgencyApplication[]> => {
     try {
-      const response = await apiClient.get(endpoints.APPLICATIONS.LIST);
-      const data = response.data.results || response.data;
-
-      // ✅ CRITICAL FIX: Explicitly define "terminal" (finished) states.
-      // These applications are completely removed from the Operations Queue.
-      // This hides: approved, rejected, cancelled (by tenant), and expired applications.
-      const terminalStatuses = ["approved", "rejected", "cancelled", "expired"];
+      const response = await apiClient.get(
+        `${endpoints.APPLICATIONS.LIST}?application_type=rental`,
+      );
+      const data = normalizeResponse(response.data);
 
       const actionableApps = data.filter(
-        (app: any) => !terminalStatuses.includes(app.status),
+        (app: any) => !TERMINAL_STATUSES.includes(app.status),
       );
 
       return actionableApps.map((app: any) => ({
         id: app.id,
-        applicant_name:
-          app.reviewer_context?.applicant_name ||
-          app.applicant_name ||
-          app.applicant_email ||
-          "Unknown Applicant",
-        applicant_phone:
-          app.reviewer_context?.applicant_phone || app.applicant_phone || "N/A",
+        application_type: app.application_type || "rental",
+        applicant_name: app.applicant_name || "Unknown Applicant",
+        applicant_phone: app.applicant_phone || "N/A",
         property_name: app.property_title || "Unknown Property",
         landlord_name: app.reviewer_context?.landlord_name || "N/A",
         unit_code: app.unit_code || "N/A",
@@ -92,6 +206,7 @@ export const agencyOperationsApi = {
         submitted_at: app.created_at,
         agency_can_approve: app.reviewer_context?.can_approve ?? true,
         past_tenancy_notes: app.reviewer_context?.tenant_history_notes || [],
+        financial_status: app.financial_status || buildDefaultFinancialStatus(),
       }));
     } catch (error) {
       console.error("Failed to fetch applications", error);
@@ -99,24 +214,33 @@ export const agencyOperationsApi = {
     }
   },
 
-  /**
-   * Fetches transfer requests from the Tenancy app.
-   */
+  // ==========================================
+  // TRANSFER APPLICATIONS
+  // ==========================================
   getTransfers: async (): Promise<AgencyTransfer[]> => {
     try {
-      const response = await apiClient.get(endpoints.TENANCIES.TRANSFERS);
-      const data = response.data.results || response.data;
+      const response = await apiClient.get(
+        `${endpoints.APPLICATIONS.LIST}?application_type=transfer`,
+      );
+      const data = normalizeResponse(response.data);
 
-      return data.map((t: any) => ({
-        id: t.id,
-        tenant_name: t.tenant_name || t.tenant_email || "Unknown Tenant",
-        from_property: t.from_property_title || "Unknown",
-        from_unit: t.from_unit_code || "N/A",
-        to_property: t.to_property_title || "Unknown",
-        to_unit: t.to_unit_code || "N/A",
-        reason: t.reason || "",
-        status: t.transfer_status || t.status || "pending",
-        submitted_at: t.created_at || new Date().toISOString(),
+      const actionableTransfers = data.filter(
+        (app: any) => !TERMINAL_STATUSES.includes(app.status),
+      );
+
+      return actionableTransfers.map((app: any) => ({
+        id: app.id,
+        tenant_name: app.applicant_name || "Unknown Tenant",
+        applicant_phone: app.applicant_phone || "N/A",
+        from_property: app.from_property_name || "Unknown",
+        from_unit: app.from_unit_code || "N/A",
+        to_property: app.to_property_name || "Unknown",
+        to_unit: app.to_unit_code || "N/A",
+        reason: app.transfer_reason || "",
+        desired_move_in_date: app.desired_move_in_date || null,
+        status: app.status || "pending",
+        submitted_at: app.created_at || new Date().toISOString(),
+        financial_status: app.financial_status || buildDefaultFinancialStatus(),
       }));
     } catch (error) {
       console.error("Failed to fetch transfers", error);
@@ -124,24 +248,32 @@ export const agencyOperationsApi = {
     }
   },
 
-  /**
-   * Fetches termination/move-out notices from the Tenancy app.
-   */
+  // ==========================================
+  // TERMINATION APPLICATIONS
+  // ==========================================
   getTerminations: async (): Promise<AgencyTermination[]> => {
     try {
-      const response = await apiClient.get(endpoints.TENANCIES.TERMINATIONS);
-      const data = response.data.results || response.data;
+      const response = await apiClient.get(
+        `${endpoints.APPLICATIONS.LIST}?application_type=termination`,
+      );
+      const data = normalizeResponse(response.data);
 
-      return data.map((term: any) => ({
-        id: term.id,
-        tenant_name: term.tenant_name || term.tenant_email || "Unknown Tenant",
-        property_name: term.property_title || "Unknown Property",
-        unit_code: term.unit_code || "N/A",
-        notice_type: term.termination_type || "tenant_request",
-        proposed_move_out_date:
-          term.intended_vacate_date || term.proposed_move_out_date || "",
-        status: term.status || "pending_review",
-        notes: term.notes || "",
+      const actionableTerminations = data.filter(
+        (app: any) => !TERMINAL_STATUSES.includes(app.status),
+      );
+
+      return actionableTerminations.map((app: any) => ({
+        id: app.id,
+        tenant_name: app.applicant_name || "Unknown Tenant",
+        applicant_phone: app.applicant_phone || "N/A",
+        property_name: app.property_name || "Unknown Property",
+        unit_code: app.unit_code || "N/A",
+        notice_type: app.termination_type || "tenant_request",
+        proposed_move_out_date: app.proposed_move_out_date || "",
+        status: app.status || "pending",
+        notes: app.termination_notes || "",
+        financial_status: app.financial_status || buildDefaultFinancialStatus(),
+        penalty_amount: app.penalty_amount || 0,
       }));
     } catch (error) {
       console.error("Failed to fetch terminations", error);
@@ -149,9 +281,92 @@ export const agencyOperationsApi = {
     }
   },
 
-  /**
-   * Submits a decision (approve/reject/escalate) for a rental application.
-   */
+  // ==========================================
+  // EXTENSION APPLICATIONS
+  // ==========================================
+  getExtensions: async (): Promise<AgencyExtension[]> => {
+    try {
+      const response = await apiClient.get(
+        `${endpoints.APPLICATIONS.LIST}?application_type=extension`,
+      );
+      const data = normalizeResponse(response.data);
+
+      const actionableExtensions = data.filter(
+        (app: any) => !TERMINAL_STATUSES.includes(app.status),
+      );
+
+      return actionableExtensions.map((app: any) => ({
+        id: app.id,
+        tenant_name: app.applicant_name || "Unknown Tenant",
+        applicant_phone: app.applicant_phone || "N/A",
+        property_name: app.property_name || "Unknown Property",
+        unit_code: app.unit_code || "N/A",
+        new_end_date: app.new_end_date || "",
+        extension_reason: app.extension_reason || "",
+        status: app.status || "pending",
+        submitted_at: app.created_at || new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.error("Failed to fetch extensions", error);
+      return [];
+    }
+  },
+
+  // ==========================================
+  // TENANT-SPECIFIC APPLICATIONS (For Tenant Financials Tab)
+  // ==========================================
+  getTenantApplications: async (
+    tenantId: number,
+  ): Promise<AgencyApplication[]> => {
+    try {
+      const response = await apiClient.get(
+        `${endpoints.APPLICATIONS.LIST}?applicant=${tenantId}`,
+      );
+      const data = normalizeResponse(response.data);
+
+      // Filter to only include transfer, termination, extension applications
+      const filteredApps = data.filter((app: any) =>
+        ["transfer", "termination", "extension"].includes(app.application_type),
+      );
+
+      return filteredApps.map((app: any) => ({
+        id: app.id,
+        application_type: app.application_type,
+        applicant_name: app.applicant_name || "Unknown",
+        applicant_phone: app.applicant_phone || "N/A",
+        property_name: app.property_title || "Unknown",
+        landlord_name: "N/A",
+        unit_code: app.unit_code || "N/A",
+        status: app.status,
+        past_tenancy_notes: [],
+        submitted_at: app.created_at,
+        agency_can_approve: true,
+        financial_status: app.financial_status || buildDefaultFinancialStatus(),
+        // Transfer fields
+        from_property_name: app.from_property_name,
+        from_unit_code: app.from_unit_code,
+        to_property_name: app.to_property_name,
+        to_unit_code: app.to_unit_code,
+        desired_move_in_date: app.desired_move_in_date,
+        transfer_reason: app.transfer_reason,
+        // Termination fields
+        proposed_move_out_date: app.proposed_move_out_date,
+        termination_type: app.termination_type,
+        penalty_amount: app.penalty_amount || 0,
+        termination_notes: app.termination_notes,
+        // Extension fields
+        new_end_date: app.new_end_date,
+        extension_reason: app.extension_reason,
+      }));
+    } catch (error) {
+      console.error("Failed to fetch tenant applications", error);
+      return [];
+    }
+  },
+
+  // ==========================================
+  // DECISION & MANAGEMENT ACTIONS
+  // ==========================================
   makeDecision: async (
     applicationId: number,
     decision: "approved" | "rejected" | "escalated",
@@ -163,34 +378,54 @@ export const agencyOperationsApi = {
     });
   },
 
-  /**
-   * Submits a decision for a transfer request.
-   */
-  decideTransfer: async (
-    transferId: number,
-    decision: "approved" | "rejected",
+  managerCancelApplication: async (applicationId: number, reason: string) => {
+    return apiClient.post(
+      `${endpoints.APPLICATIONS.DETAIL(applicationId)}manager_cancel/`,
+      { reason },
+    );
+  },
+
+  // ==========================================
+  // WAIVER MANAGEMENT
+  // ==========================================
+  applyWaiver: async (
+    applicationId: number,
+    waiverTypes: ("rent" | "deposit" | "service_charge")[],
     reason: string,
   ) => {
     return apiClient.post(
-      `${endpoints.TENANCIES.LIST}${transferId}/decide_transfer/`,
+      `${endpoints.APPLICATIONS.DETAIL(applicationId)}apply_waiver/`,
       {
-        decision,
+        waiver_types: waiverTypes,
         reason,
       },
     );
   },
 
-  /**
-   * Submits a decision for a termination/move-out notice.
-   */
-  decideTermination: async (
-    terminationId: number,
-    decision: "approved" | "rejected",
+  revokeWaiver: async (
+    applicationId: number,
+    waiverTypes: ("rent" | "deposit" | "service_charge")[],
     reason: string,
   ) => {
     return apiClient.post(
-      `${endpoints.TENANCIES.LIST}${terminationId}/decide_termination/`,
-      { decision, reason },
+      `${endpoints.APPLICATIONS.DETAIL(applicationId)}revoke_waiver/`,
+      {
+        waiver_types: waiverTypes,
+        reason,
+      },
+    );
+  },
+
+  // ==========================================
+  // APPLICATION EDITING (For role-based updates)
+  // ==========================================
+  updateApplication: async (
+    applicationId: number,
+    updateData: Record<string, any>,
+  ) => {
+    return apiClient.patch(
+      `${endpoints.APPLICATIONS.DETAIL(applicationId)}`,
+      updateData,
     );
   },
 };

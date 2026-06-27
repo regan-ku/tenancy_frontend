@@ -124,7 +124,6 @@ export default function AgencyPropertyDetailPage() {
     try {
       const payload = { ...formData };
 
-      // ✅ BULLETPROOF LOCATION MAPPING
       if (
         payload.location_details &&
         typeof payload.location_details === "object"
@@ -132,8 +131,6 @@ export default function AgencyPropertyDetailPage() {
         payload.location = { ...payload.location_details };
         delete payload.location_details;
       }
-
-      console.log("🚀 SAVING PAYLOAD:", payload); // Debug log to verify what is being sent
 
       await agencyPropertiesApi.updateProperty(Number(id), payload);
       alert("✅ Property updated successfully!");
@@ -403,7 +400,7 @@ export default function AgencyPropertyDetailPage() {
               />
             </div>
 
-            {/* Unit Groups Overview */}
+            {/* ✅ UPGRADED: Unit Groups Overview with Occupancy Stats */}
             <div className="space-y-4">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <h3 className="text-sm font-bold text-slate-500 uppercase">
@@ -428,31 +425,53 @@ export default function AgencyPropertyDetailPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {unitGroups.map((group) => (
-                    <div
-                      key={group.id}
-                      className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center hover:border-primary/50 transition-colors"
-                    >
-                      <div>
-                        <p className="font-bold text-slate-800 text-sm">
-                          {group.name}
-                        </p>
-                        <p className="text-xs text-slate-500 capitalize">
-                          {group.unit_type.replace("_", " ")}
-                        </p>
+                  {unitGroups.map((group) => {
+                    // ✅ Calculate stats from Tenancy source of truth
+                    const totalUnits = (group as any).actual_units_count || 0;
+                    const occupied = (group as any).occupied_units || 0;
+                    const available = (group as any).available_units || 0;
+
+                    let statusText = "";
+                    let statusColor = "";
+
+                    if (totalUnits === 0) {
+                      statusText = "No Units";
+                      statusColor = "text-slate-400";
+                    } else if (occupied === 0) {
+                      statusText = "All Vacant";
+                      statusColor = "text-green-600";
+                    } else if (occupied === totalUnits) {
+                      statusText = `Fully Occupied (${occupied})`;
+                      statusColor = "text-red-600";
+                    } else {
+                      statusText = `${available} Available / ${totalUnits} Total`;
+                      statusColor = "text-blue-600";
+                    }
+
+                    return (
+                      <div
+                        key={group.id}
+                        className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex justify-between items-center hover:border-primary/50 transition-colors"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-800 text-sm">
+                            {group.name}
+                          </p>
+                          <p className="text-xs text-slate-500 capitalize">
+                            {group.unit_type.replace("_", " ")}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-bold ${statusColor}`}>
+                            {statusText}
+                          </p>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">
+                            {occupied} Occupied • {available} Available
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xl font-bold text-primary">
-                          {(group as any).actual_units_count !== undefined
-                            ? (group as any).actual_units_count
-                            : group.units_count || group.capacity || 0}
-                        </p>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">
-                          Units
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -530,7 +549,7 @@ export default function AgencyPropertyDetailPage() {
               </div>
             </div>
 
-            {/* ✅ Location Details & Map (FIXED) */}
+            {/* Location Details & Map */}
             <div className="space-y-4">
               <h3 className="text-sm font-bold text-slate-500 uppercase border-b border-slate-100 pb-2">
                 Location Details & Map
@@ -638,9 +657,7 @@ export default function AgencyPropertyDetailPage() {
                 </div>
               </div>
 
-              {/* ✅ SAFE MAP EXTRACTION & PIN GENERATION */}
               {(() => {
-                // Safely parse coordinates from backend response
                 const rawLat = formData.location_details?.latitude;
                 const rawLon = formData.location_details?.longitude;
                 const lat = rawLat ? parseFloat(String(rawLat)) : NaN;
@@ -648,13 +665,10 @@ export default function AgencyPropertyDetailPage() {
                 const hasCoords = !isNaN(lat) && !isNaN(lon);
 
                 if (hasCoords) {
-                  // Calculate bounding box for the map embed
                   const bboxLonMin = (lon - 0.005).toFixed(5);
                   const bboxLatMin = (lat - 0.005).toFixed(5);
                   const bboxLonMax = (lon + 0.005).toFixed(5);
                   const bboxLatMax = (lat + 0.005).toFixed(5);
-
-                  // OpenStreetMap embed URL with marker pin
                   const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bboxLonMin}%2C${bboxLatMin}%2C${bboxLonMax}%2C${bboxLatMax}&layer=mapnik&marker=${lat}%2C${lon}`;
 
                   return (
@@ -917,6 +931,7 @@ function PropertyMediaHub({
       alert("Failed to delete.");
     }
   };
+
   const handleUpdateCaption = async (mediaId: number, newCaption: string) => {
     try {
       await agencyPropertiesApi.updateMediaCaption(
@@ -931,6 +946,7 @@ function PropertyMediaHub({
       alert("Failed to update caption.");
     }
   };
+
   const handleSetAsCover = async (mediaUrl: string) => {
     if (!confirm("Set this media as the property cover photo?")) return;
     try {

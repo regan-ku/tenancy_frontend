@@ -71,7 +71,7 @@ export const endpoints = {
     RESTORE: (id: number) => `${BASE}/marketplace/properties/${id}/restore/`,
   },
 
-  // ==========================================
+  // =  // ==========================================
   // TENANCIES
   // ==========================================
   TENANCIES: {
@@ -82,16 +82,39 @@ export const endpoints = {
     TERMINATE: (id: number) => `${BASE}/tenancies/tenancies/${id}/terminate/`,
     TRANSFER: (id: number) => `${BASE}/tenancies/tenancies/${id}/transfer/`,
     ADD_NOTE: (id: number) => `${BASE}/tenancies/tenancies/${id}/add_note/`,
+
+    // ✅ ADDED: Missing endpoints
     NOTES: `${BASE}/tenancies/notes/`,
+    WAIVERS: `${BASE}/tenancies/waivers/`, // ← ADDED THIS LINE
     OCCUPANCY: `${BASE}/tenancies/occupancy/`,
     TENANT_HISTORY: (tenantId: number) =>
       `${BASE}/tenancies/tenants/${tenantId}/history/`,
 
-    // ✅ NEW: List endpoints for Agency Operations
+    // List endpoints for Agency Operations
     TRANSFERS: `${BASE}/tenancies/tenancies/transfers/`,
     TERMINATIONS: `${BASE}/tenancies/tenancies/terminations/`,
-  },
 
+    // Decision endpoints
+    DECIDE_TRANSFER: (id: number) =>
+      `${BASE}/tenancies/tenancies/${id}/decide_transfer/`,
+    DECIDE_TERMINATION: (id: number) =>
+      `${BASE}/tenancies/tenancies/${id}/decide_termination/`,
+    DECIDE_EXTENSION: (id: number) =>
+      `${BASE}/tenancies/tenancies/${id}/decide_extension/`,
+
+    // Tenant history summary and application profile
+    TENANT_HISTORY_SUMMARY: (tenantId: number) =>
+      `${BASE}/tenancies/tenants/${tenantId}/history/summary/`,
+    APPLICATION_TENANT_PROFILE: (applicationId: number) =>
+      `${BASE}/tenancies/applications/${applicationId}/tenant-profile/`,
+
+    CANCEL_TRANSFER: (id: number) =>
+      `${BASE}/tenancies/tenancies/${id}/cancel_transfer/`,
+    CANCEL_EXTENSION: (id: number) =>
+      `${BASE}/tenancies/tenancies/${id}/cancel_extension/`,
+    CANCEL_TERMINATION: (id: number) =>
+      `${BASE}/tenancies/tenancies/${id}/cancel_termination/`,
+  },
   // ==========================================
   // APPLICATIONS
   // ==========================================
@@ -102,7 +125,6 @@ export const endpoints = {
       `${BASE}/applications/applications/${id}/make_decision/`,
     ADD_NOTE: (id: number) =>
       `${BASE}/applications/applications/${id}/add_note/`,
-    // ✅ NEW: Cancel endpoint for applicants
     CANCEL: (id: number) => `${BASE}/applications/applications/${id}/cancel/`,
     RENTAL: `${BASE}/applications/rental/`,
     TRANSFER: `${BASE}/applications/transfer/`,

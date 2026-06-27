@@ -9,6 +9,8 @@ export interface AgencyProperty {
   name: string;
   location: string;
   total_units: number;
+  occupied_units: number;
+  available_units: number;
   occupancy_rate: number;
   ownership_type: "owned" | "delegated";
   landlord_name: string;
@@ -98,8 +100,12 @@ export const agencyPropertiesApi = {
           id: prop.id,
           name: prop.title,
           location: locationString,
-          total_units: prop.total_units_capacity || 0,
-          occupancy_rate: 0,
+          // ✅ FIX: Use actual calculated values from backend
+          total_units: prop.total_units || prop.total_units_capacity || 0,
+          occupied_units: prop.occupied_units || 0,
+          available_units: prop.available_units || 0,
+          // ✅ FIX: Use backend-calculated occupancy rate instead of hardcoding to 0
+          occupancy_rate: prop.occupancy_rate || 0,
           ownership_type: isDelegated ? "delegated" : "owned",
           landlord_name: prop.landlord_name || "Unknown Owner",
           delegation_type: delegationInfo.delegation_type || "full",
@@ -117,6 +123,7 @@ export const agencyPropertiesApi = {
         };
       });
     } catch (error) {
+      console.error("Failed to fetch properties:", error);
       return [];
     }
   },
@@ -145,8 +152,12 @@ export const agencyPropertiesApi = {
         id: prop.id,
         name: prop.title,
         location: locationString,
-        total_units: prop.total_units_capacity || 0,
-        occupancy_rate: 0,
+        // ✅ FIX: Use actual calculated values from backend
+        total_units: prop.total_units || prop.total_units_capacity || 0,
+        occupied_units: prop.occupied_units || 0,
+        available_units: prop.available_units || 0,
+        // ✅ FIX: Use backend-calculated occupancy rate
+        occupancy_rate: prop.occupancy_rate || 0,
         ownership_type: isDelegated ? "delegated" : "owned",
         landlord_name: prop.landlord_name || "Unknown Owner",
         delegation_type: delegationInfo.delegation_type || "full",
@@ -184,21 +195,18 @@ export const agencyPropertiesApi = {
         cover_photo: prop.cover_photo || "",
       };
     } catch (error) {
+      console.error("Failed to fetch property detail:", error);
       throw new Error("Property not found or access denied.");
     }
   },
 
-  // ✅ FIX: Prevent overwriting the 'location' key with undefined
   updateProperty: async (id: number, data: any): Promise<any> => {
     const payload = { ...data };
 
-    // Only map location_details to location IF location_details exists AND location doesn't already exist
     if (payload.location_details && !payload.location) {
       payload.location = payload.location_details;
       delete payload.location_details;
     }
-
-    // If location_details was already deleted by the page component, payload.location is safely preserved!
 
     const response = await apiClient.patch(
       endpoints.PROPERTIES.DETAIL(id),

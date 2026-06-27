@@ -158,7 +158,7 @@ export default function AgencyPropertiesPage() {
                       Total Units
                     </p>
                     <p className="text-xl font-extrabold text-primary-dark">
-                      {prop.total_units}
+                      {prop.total_units || 0}
                     </p>
                   </div>
                   <div>
@@ -166,7 +166,7 @@ export default function AgencyPropertiesPage() {
                       Occupancy
                     </p>
                     <p className="text-xl font-extrabold text-green-600">
-                      {prop.occupancy_rate}%
+                      {prop.occupancy_rate ?? 0}%
                     </p>
                   </div>
                 </div>

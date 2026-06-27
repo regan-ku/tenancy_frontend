@@ -51,14 +51,270 @@ export default function AgencyApplicationReviewModal({
     }
   };
 
+  const renderNotes = () => (
+    <div className="mt-4 pt-4 border-t border-slate-200">
+      <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+        Past Tenancy Notes & History
+      </p>
+      {application.past_tenancy_notes &&
+      application.past_tenancy_notes.length > 0 ? (
+        <ul className="space-y-2">
+          {application.past_tenancy_notes.map((note, idx) => (
+            <li
+              key={note.id || idx}
+              className="text-xs bg-white p-2 rounded border border-slate-100"
+            >
+              <span className="font-bold text-slate-600">[{note.type}]</span>{" "}
+              {note.content}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-slate-600 italic bg-blue-50 p-3 rounded border border-blue-100">
+          No prior tenancy history or notes found. This is a new applicant.
+        </p>
+      )}
+    </div>
+  );
+
+  const renderApplicationSummary = () => {
+    const type = application.application_type;
+
+    // --- TRANSFER UI ---
+    if (type === "transfer") {
+      return (
+        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span className="text-blue-600">🔄</span> Transfer Request Details
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-slate-500">Tenant Name</p>
+              <p className="font-medium text-slate-800">
+                {application.applicant_name}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Phone</p>
+              <p className="font-medium text-slate-800">
+                {application.applicant_phone}
+              </p>
+            </div>
+            <div className="col-span-2 bg-white p-3 rounded border border-slate-100">
+              <p className="text-xs text-slate-500 mb-1">Moving From</p>
+              <p className="font-bold text-slate-800">
+                {application.from_property_name || "Unknown"} -{" "}
+                {application.from_unit_code || "N/A"}
+              </p>
+            </div>
+            <div className="col-span-2 bg-green-50 p-3 rounded border border-green-100">
+              <p className="text-xs text-green-700 mb-1">Moving To</p>
+              <p className="font-bold text-green-800">
+                {application.to_property_name || "Unknown"} -{" "}
+                {application.to_unit_code || "N/A"}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Desired Move-in Date</p>
+              <p className="font-medium text-slate-800">
+                {application.desired_move_in_date || "Not specified"}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Reason</p>
+              <p className="font-medium text-slate-800">
+                {application.transfer_reason || "No reason provided"}
+              </p>
+            </div>
+          </div>
+          {renderNotes()}
+        </div>
+      );
+    }
+
+    // --- TERMINATION UI ---
+    if (type === "termination") {
+      return (
+        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span className="text-red-600">🚪</span> Termination Request Details
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-slate-500">Tenant Name</p>
+              <p className="font-medium text-slate-800">
+                {application.applicant_name}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Current Unit</p>
+              <p className="font-medium text-slate-800">
+                {application.property_name} - {application.unit_code}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Proposed Move-out Date</p>
+              <p className="font-bold text-red-700">
+                {application.proposed_move_out_date || "Immediate"}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Termination Type</p>
+              <p className="font-medium text-slate-800 capitalize">
+                {application.termination_type?.replace("_", " ") ||
+                  "Tenant Request"}
+              </p>
+            </div>
+            {application.penalty_amount && application.penalty_amount > 0 && (
+              <div className="col-span-2 bg-red-50 p-3 rounded border border-red-100">
+                <p className="text-xs text-red-700 mb-1">Penalty Fee</p>
+                <p className="font-bold text-red-800 text-lg">
+                  KES {application.penalty_amount.toLocaleString()}
+                </p>
+              </div>
+            )}
+            <div className="col-span-2">
+              <p className="text-slate-500">Notes / Reason</p>
+              <p className="font-medium text-slate-800 bg-white p-2 rounded border border-slate-100">
+                {application.termination_notes || "No notes provided"}
+              </p>
+            </div>
+          </div>
+          {renderNotes()}
+        </div>
+      );
+    }
+
+    // --- ✅ NEW: EXTENSION UI ---
+    if (type === "extension") {
+      return (
+        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <span className="text-green-600">📅</span> Extension Request Details
+          </h3>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-slate-500">Tenant Name</p>
+              <p className="font-medium text-slate-800">
+                {application.applicant_name}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-500">Current Unit</p>
+              <p className="font-medium text-slate-800">
+                {application.property_name} - {application.unit_code}
+              </p>
+            </div>
+            <div className="col-span-2 bg-green-50 p-3 rounded border border-green-100">
+              <p className="text-xs text-green-700 mb-1">
+                Requested New End Date
+              </p>
+              <p className="font-bold text-green-800 text-lg">
+                {/* Using 'as any' to safely access extension-specific fields if not in base interface */}
+                {(application as any).new_end_date || "Not specified"}
+              </p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-slate-500">Reason for Extension</p>
+              <p className="font-medium text-slate-800 bg-white p-2 rounded border border-slate-100">
+                {(application as any).extension_reason || "No reason provided"}
+              </p>
+            </div>
+          </div>
+          {renderNotes()}
+        </div>
+      );
+    }
+
+    // --- RENTAL UI (Default) ---
+    return (
+      <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+          <span className="text-primary">🏠</span> Rental Application Details
+        </h3>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-slate-500">Applicant Name</p>
+            <p className="font-medium text-slate-800">
+              {application.applicant_name}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500">Phone</p>
+            <p className="font-medium text-slate-800">
+              {application.applicant_phone}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500">Property</p>
+            <p className="font-medium text-slate-800">
+              {application.property_name}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500">Unit</p>
+            <p className="font-medium text-slate-800">
+              {application.unit_code}
+            </p>
+          </div>
+        </div>
+
+        {application.financial_status && (
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <p className="text-xs font-bold text-slate-500 uppercase mb-2">
+              Financial Requirements
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="bg-white p-2 rounded border border-slate-100">
+                <p className="text-slate-500">Deposit</p>
+                <p className="font-bold text-slate-800">
+                  {application.financial_status.deposit_paid
+                    ? "✅ Paid"
+                    : application.financial_status.deposit_waived
+                      ? "🎁 Waived"
+                      : "⏳ Pending"}
+                </p>
+              </div>
+              <div className="bg-white p-2 rounded border border-slate-100">
+                <p className="text-slate-500">Service Charge</p>
+                <p className="font-bold text-slate-800">
+                  {application.financial_status.service_charge_paid
+                    ? "✅ Paid"
+                    : application.financial_status.service_charge_waived
+                      ? "🎁 Waived"
+                      : "⏳ Pending"}
+                </p>
+              </div>
+              <div className="bg-white p-2 rounded border border-slate-100">
+                <p className="text-slate-500">First Rent</p>
+                <p className="font-bold text-slate-800">
+                  {application.financial_status.rent_paid
+                    ? "✅ Paid"
+                    : application.financial_status.rent_waived
+                      ? "🎁 Waived"
+                      : "⏳ Pending"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        {renderNotes()}
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-bold text-primary-dark">
-            Review Application
-          </h2>
+          <div>
+            <h2 className="text-xl font-bold text-primary-dark">
+              Review Application
+            </h2>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-1 rounded mt-1 inline-block">
+              {application.application_type} Application
+            </span>
+          </div>
           <button
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600"
@@ -80,68 +336,9 @@ export default function AgencyApplicationReviewModal({
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-6">
-          {/* Application Summary */}
-          <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-2">Applicant Details</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-slate-500">Name</p>
-                <p className="font-medium text-slate-800">
-                  {application.applicant_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Phone</p>
-                <p className="font-medium text-slate-800">
-                  {application.applicant_phone}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Property</p>
-                <p className="font-medium text-slate-800">
-                  {application.property_name}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Unit</p>
-                <p className="font-medium text-slate-800">
-                  {application.unit_code}
-                </p>
-              </div>
-            </div>
+          {renderApplicationSummary()}
 
-            {/* ✅ FIX: Tenant History Notes (Always visible, shows fallback for new tenants) */}
-            <div className="mt-4 pt-4 border-t border-slate-200">
-              <p className="text-xs font-bold text-slate-500 uppercase mb-2">
-                Past Tenancy Notes & History
-              </p>
-              {application.past_tenancy_notes &&
-              application.past_tenancy_notes.length > 0 ? (
-                <ul className="space-y-2">
-                  {application.past_tenancy_notes.map((note, idx) => (
-                    <li
-                      key={note.id || idx}
-                      className="text-xs bg-white p-2 rounded border border-slate-100"
-                    >
-                      <span className="font-bold text-slate-600">
-                        [{note.type}]
-                      </span>{" "}
-                      {note.content}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-slate-600 italic bg-blue-50 p-3 rounded border border-blue-100">
-                  No prior tenancy history or notes found. This is a new
-                  applicant.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Decision Form */}
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-3">
               Decision
@@ -150,40 +347,27 @@ export default function AgencyApplicationReviewModal({
               <button
                 type="button"
                 onClick={() => setDecision("approved")}
-                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${
-                  decision === "approved"
-                    ? "border-green-500 bg-green-50 text-green-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300"
-                }`}
+                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${decision === "approved" ? "border-green-500 bg-green-50 text-green-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
               >
                 ✅ Approve
               </button>
               <button
                 type="button"
                 onClick={() => setDecision("rejected")}
-                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${
-                  decision === "rejected"
-                    ? "border-red-500 bg-red-50 text-red-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300"
-                }`}
+                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${decision === "rejected" ? "border-red-500 bg-red-50 text-red-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
               >
                 ❌ Reject
               </button>
               <button
                 type="button"
                 onClick={() => setDecision("escalated")}
-                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${
-                  decision === "escalated"
-                    ? "border-amber-500 bg-amber-50 text-amber-700"
-                    : "border-slate-200 text-slate-500 hover:border-slate-300"
-                }`}
+                className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${decision === "escalated" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
               >
                 ⬆️ Escalate
               </button>
             </div>
           </div>
 
-          {/* Reason */}
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-2">
               Reason / Remarks{" "}
@@ -207,7 +391,6 @@ export default function AgencyApplicationReviewModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="p-6 border-t border-slate-100 flex justify-end gap-3 sticky bottom-0 bg-white">
           <button
             onClick={onClose}
