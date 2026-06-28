@@ -9,6 +9,9 @@ export interface ApplicationFormData {
   phone_number: string;
   email: string;
 
+  // ✅ NEW: Manager Mode Applicant ID (The ID of the newly created tenant)
+  applicant: number | null;
+
   // Property & Unit Selection
   propertyId: number | null;
   unitGroupId: number | null;
@@ -54,6 +57,7 @@ const initialFormData: ApplicationFormData = {
   full_name: "",
   phone_number: "",
   email: "",
+  applicant: null, // ✅ NEW: Initialize applicant as null
   propertyId: null,
   unitGroupId: null,
   preferredFloor: null,

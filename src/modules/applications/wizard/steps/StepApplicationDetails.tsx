@@ -1,10 +1,14 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation"; // ✅ ADDED
 import { useApplicationWizardStore } from "@/store/applicationWizard.store";
 import { propertiesApi } from "@/api/properties.api";
 
 export default function StepApplicationDetails() {
+  const searchParams = useSearchParams(); // ✅ ADDED
+  const isManagerMode = searchParams.get("mode") === "manager"; // ✅ ADDED
+
   const { applicationType, formData, updateFormData, showStepValidation } =
     useApplicationWizardStore();
 
@@ -34,15 +38,14 @@ export default function StepApplicationDetails() {
         preferredFloor: floor,
         target_unit_id: null,
         target_unit_code: null,
-        target_unit_rent: null, // ✅ CLEAR FINANCIALS
-        target_unit_deposit: null, // ✅ CLEAR FINANCIALS
+        target_unit_rent: null,
+        target_unit_deposit: null,
       });
     } else {
       setFloorError(null);
       const randomUnit =
         unitsOnFloor[Math.floor(Math.random() * unitsOnFloor.length)];
 
-      // ✅ SAVE FINANCIALS TO STORE alongside the unit ID
       updateFormData({
         preferredFloor: floor,
         target_unit_id: randomUnit.id,
@@ -77,15 +80,26 @@ export default function StepApplicationDetails() {
 
         setAvailableFloors(floors);
 
-        if (floors.length > 0 && !formData.preferredFloor) {
+        // ✅ FIX: If in Manager Mode, the unit is already selected.
+        // We just need to ensure the store has the unit details (code, rent, deposit) from the fetched list.
+        if (isManagerMode && formData.target_unit_id) {
+          const selectedUnit = units.find(
+            (u) => u.id === formData.target_unit_id,
+          );
+          if (selectedUnit && !formData.target_unit_code) {
+            updateFormData({
+              target_unit_code: selectedUnit.unit_code,
+              target_unit_rent: selectedUnit.rent_amount,
+              target_unit_deposit: selectedUnit.deposit_amount,
+              preferredFloor: selectedUnit.floor_number,
+            });
+          }
+        } else if (floors.length > 0 && !formData.preferredFloor) {
           filterUnitsByFloor(units, floors[0], floors);
         } else if (formData.preferredFloor) {
           filterUnitsByFloor(units, formData.preferredFloor, floors);
         }
       } catch (err: any) {
-        // ✅ SILENCE 401 & CANCELED ERRORS:
-        // If it's a 401, the session is dead and the user is being redirected.
-        // If it's 'canceled' or 'ECONNABORTED', the browser killed the request during redirect.
         const is401 = err.response?.status === 401;
         const isCanceled =
           err.code === "ECONNABORTED" || err.message === "canceled";
@@ -98,7 +112,12 @@ export default function StepApplicationDetails() {
       }
     };
     fetchUnits();
-  }, [formData.propertyId, formData.unitGroupId]);
+  }, [
+    formData.propertyId,
+    formData.unitGroupId,
+    isManagerMode,
+    formData.target_unit_id,
+  ]);
 
   const handleFloorSelect = (floor: number) => {
     filterUnitsByFloor(availableUnits, floor, availableFloors);
@@ -155,11 +174,12 @@ export default function StepApplicationDetails() {
 
       <div>
         <h2 className="text-2xl font-bold text-primary-dark mb-2">
-          Application Details
+          {isManagerMode ? "New Tenant Details" : "Application Details"}
         </h2>
         <p className="text-slate-500">
-          Your profile information has been auto-populated. Please complete the
-          specific details for this {applicationType} request.
+          {isManagerMode
+            ? "Please complete the specific details for this new tenant's application."
+            : "Your profile information has been auto-populated. Please complete the specific details for this request."}
         </p>
       </div>
 
@@ -167,7 +187,7 @@ export default function StepApplicationDetails() {
         {/* AUTO-POPULATED PROFILE FIELDS (Read-Only) */}
         <div className="md:col-span-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
           <h3 className="text-sm font-semibold text-slate-700 mb-3 uppercase tracking-wide">
-            Applicant Information
+            {isManagerMode ? "New Tenant Information" : "Applicant Information"}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -213,55 +233,78 @@ export default function StepApplicationDetails() {
               🏢 Unit & Floor Preference
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Preferred Floor *
-                </label>
-                <select
-                  value={formData.preferredFloor || ""}
-                  onChange={(e) => handleFloorSelect(Number(e.target.value))}
-                  required
-                  disabled={isLoadingUnits || availableFloors.length === 0}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none bg-white disabled:bg-slate-100 ${showStepValidation && !formData.target_unit_id ? "border-red-500" : "border-slate-300"}`}
-                >
-                  <option value="">Select a floor</option>
-                  {availableFloors.map((floor) => (
-                    <option key={floor} value={floor}>
-                      Floor {floor}
-                    </option>
-                  ))}
-                </select>
-                {showStepValidation && !formData.target_unit_id && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Please select a floor.
-                  </p>
-                )}
-                {availableFloors.length === 0 && !isLoadingUnits && (
-                  <p className="text-xs text-red-600 mt-1">
-                    No available units of this type at the moment.
-                  </p>
+            {/* ✅ NEW: MANAGER MODE READ-ONLY UNIT DISPLAY */}
+            {isManagerMode && formData.target_unit_id ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <p className="text-xs text-green-700 font-semibold mb-1">
+                  ✅ Unit Pre-Selected by Manager
+                </p>
+                <p className="text-sm text-green-800">
+                  Unit{" "}
+                  <strong>
+                    {formData.target_unit_code || formData.target_unit_id}
+                  </strong>
+                  {formData.preferredFloor !== null &&
+                    ` on Floor ${formData.preferredFloor}`}{" "}
+                  has been assigned for this application.
+                </p>
+                <p className="text-xs text-slate-500 mt-2">
+                  (The unit is locked in this workflow. If you need a different
+                  unit, please exit and start over.)
+                </p>
+              </div>
+            ) : (
+              /* STANDARD MODE: SHOW FLOOR SELECTION */
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Preferred Floor *
+                  </label>
+                  <select
+                    value={formData.preferredFloor || ""}
+                    onChange={(e) => handleFloorSelect(Number(e.target.value))}
+                    required
+                    disabled={isLoadingUnits || availableFloors.length === 0}
+                    className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary outline-none bg-white disabled:bg-slate-100 ${showStepValidation && !formData.target_unit_id ? "border-red-500" : "border-slate-300"}`}
+                  >
+                    <option value="">Select a floor</option>
+                    {availableFloors.map((floor) => (
+                      <option key={floor} value={floor}>
+                        Floor {floor}
+                      </option>
+                    ))}
+                  </select>
+                  {showStepValidation && !formData.target_unit_id && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Please select a floor.
+                    </p>
+                  )}
+                  {availableFloors.length === 0 && !isLoadingUnits && (
+                    <p className="text-xs text-red-600 mt-1">
+                      No available units of this type at the moment.
+                    </p>
+                  )}
+                </div>
+
+                {formData.target_unit_id && !floorError && (
+                  <div className="flex items-end">
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 w-full">
+                      <p className="text-xs text-green-700 font-semibold">
+                        ✅ Unit Reserved for Application
+                      </p>
+                      <p className="text-sm text-green-800">
+                        Unit{" "}
+                        <strong>
+                          {formData.target_unit_code || formData.target_unit_id}
+                        </strong>{" "}
+                        on Floor {formData.preferredFloor} has been tentatively
+                        assigned.
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {formData.target_unit_id && !floorError && (
-                <div className="flex items-end">
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 w-full">
-                    <p className="text-xs text-green-700 font-semibold">
-                      ✅ Unit Reserved for Application
-                    </p>
-                    <p className="text-sm text-green-800">
-                      Unit{" "}
-                      <strong>
-                        {formData.target_unit_code || formData.target_unit_id}
-                      </strong>{" "}
-                      on Floor {formData.preferredFloor} has been tentatively
-                      assigned.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
 
             {floorError && (
               <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">

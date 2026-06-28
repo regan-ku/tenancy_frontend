@@ -29,12 +29,16 @@ function ApplicationWizardContent() {
     updateFormData,
     resetWizard,
     isSubmitting,
-    wizardLocked, // ✅ ADDED: Extract the lock state
+    wizardLocked,
   } = useApplicationWizardStore();
 
-  // ✅ Pass the dynamic lock state to the hook
-  // When wizardLocked becomes false (after submission), the hook removes the browser event listeners.
   useWizardLock(wizardLocked);
+
+  // ✅ NEW: Detect Manager Mode from URL params
+  const mode = searchParams.get("mode");
+  const isManagerMode = mode === "manager";
+  const urlTenantId = searchParams.get("tenant_id");
+  const urlUnitId = searchParams.get("target_unit_id");
 
   useEffect(() => {
     let type = searchParams.get("type") as ApplicationType | null;
@@ -52,11 +56,20 @@ function ApplicationWizardContent() {
     if (propertyId) urlUpdates.propertyId = Number(propertyId);
     if (unitGroupId) urlUpdates.unitGroupId = Number(unitGroupId);
 
+    // ✅ NEW: Inject Manager Mode specific IDs into the store
+    if (isManagerMode) {
+      if (urlTenantId) urlUpdates.applicant = Number(urlTenantId);
+      if (urlUnitId) urlUpdates.target_unit_id = Number(urlUnitId);
+    }
+
     if (Object.keys(urlUpdates).length > 0) {
       updateFormData(urlUpdates);
     }
 
-    if (user) {
+    // ✅ CRITICAL: Only fetch the LOGGED-IN user's profile if this is a STANDARD application.
+    // In Manager Mode, the applicant is the newly created tenant, NOT the manager.
+    // The tenant's details will be populated by the AddTenantModal before navigation.
+    if (user && !isManagerMode) {
       const currentFormData = useApplicationWizardStore.getState().formData;
       const u = user as any;
 
@@ -107,7 +120,14 @@ function ApplicationWizardContent() {
         }
       }
     }
-  }, [pathname, searchParams, user, setApplicationType, updateFormData]);
+  }, [
+    pathname,
+    searchParams,
+    user?.id, // ✅ FIX: Use user?.id instead of the whole 'user' object to prevent infinite re-renders
+    setApplicationType,
+    updateFormData,
+    isManagerMode,
+  ]);
 
   const handleCancel = () => {
     if (
@@ -116,7 +136,8 @@ function ApplicationWizardContent() {
       )
     ) {
       resetWizard();
-      router.push("/marketplace");
+      // ✅ NEW: Route managers back to their dashboard, not the public marketplace
+      router.push(isManagerMode ? "/dashboard/landlord" : "/marketplace");
     }
   };
 
@@ -162,6 +183,7 @@ function ApplicationWizardContent() {
   const progress = (currentStep / totalSteps) * 100;
 
   const getTitle = () => {
+    if (isManagerMode) return "Manager Application Setup";
     switch (applicationType) {
       case "rental":
         return "Rental Application";

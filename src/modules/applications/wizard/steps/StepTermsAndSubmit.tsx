@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation"; // ✅ ADDED useSearchParams
 import { useApplicationWizardStore } from "@/store/applicationWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import { applicationsApi, TenantHistorySummary } from "@/api/applications.api";
@@ -16,6 +16,9 @@ const formatCurrency = (value: any): string => {
 
 export default function StepTermsAndSubmit() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // ✅ ADDED
+  const isManagerMode = searchParams.get("mode") === "manager"; // ✅ ADDED
+
   const { user } = useAuthStore();
   const {
     applicationType,
@@ -27,7 +30,7 @@ export default function StepTermsAndSubmit() {
     isSubmitting,
     error,
     resetWizard,
-    setWizardLocked, // ✅ EXTRACT: Needed to disable the browser navigation lock
+    setWizardLocked,
   } = useApplicationWizardStore();
 
   const [unitDetails, setUnitDetails] = useState<any>(null);
@@ -55,11 +58,15 @@ export default function StepTermsAndSubmit() {
         }
       }
 
-      if (user?.id) {
+      // ✅ UPDATED: Determine who to fetch history for
+      // In Manager Mode, the applicant is the new tenant (formData.applicant).
+      // In Standard Mode, the applicant is the logged-in user (user.id).
+      const applicantId = isManagerMode ? formData.applicant : user?.id;
+
+      if (applicantId) {
         try {
-          const historyData = await applicationsApi.getTenantHistorySummary(
-            user.id,
-          );
+          const historyData =
+            await applicationsApi.getTenantHistorySummary(applicantId);
           setTenantHistory(historyData);
         } catch (histErr) {
           console.warn("⚠️ Could not fetch tenant history.", histErr);
@@ -70,7 +77,13 @@ export default function StepTermsAndSubmit() {
     };
 
     fetchData();
-  }, [formData.target_unit_id, formData.propertyId, user?.id]);
+  }, [
+    formData.target_unit_id,
+    formData.propertyId,
+    user?.id,
+    formData.applicant,
+    isManagerMode,
+  ]);
 
   const handleSubmit = async () => {
     if (!termsAccepted) {
@@ -95,13 +108,12 @@ export default function StepTermsAndSubmit() {
 
       // 2. ✅ INSTANTLY SHOW SUCCESS SCREEN
       setIsSuccess(true);
-
-      // 3. ✅ CRITICAL: DISABLE THE WIZARD LOCK
-      // This removes the beforeunload listener, preventing the "Stay/Leave" browser prompt.
       setWizardLocked(false);
 
-      // 4. Fetch the next route BEFORE resetting the wizard
-      let nextRoute = "/marketplace";
+      // 3. Fetch the next route BEFORE resetting the wizard
+      // ✅ UPDATED: Managers go to dashboard, Tenants go to marketplace/status
+      let nextRoute = isManagerMode ? "/dashboard/landlord" : "/marketplace";
+
       try {
         const userState = await useAuthStore.getState().fetchUserState();
         if (userState?.next_route) {
@@ -114,10 +126,10 @@ export default function StepTermsAndSubmit() {
         );
       }
 
-      // 5. Clear the wizard state
+      // 4. Clear the wizard state
       resetWizard();
 
-      // 6. Force hard navigation to the backend's chosen destination
+      // 5. Force hard navigation
       window.location.href = nextRoute;
     } catch (err: any) {
       console.error("❌ Application submission failed:", err);
@@ -201,7 +213,7 @@ export default function StepTermsAndSubmit() {
           Review & Submit Application
         </h2>
         <p className="text-slate-500">
-          Please review your application details and historical records below
+          Please review the application details and historical records below
           before submitting.
         </p>
       </div>
@@ -230,7 +242,11 @@ export default function StepTermsAndSubmit() {
                 d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
               />
             </svg>
-            Your Tenancy History (Visible to Property Manager)
+            {/* ✅ UPDATED: Dynamic Title */}
+            {isManagerMode
+              ? "Tenant's Tenancy History"
+              : "Your Tenancy History"}{" "}
+            (Visible to Property Manager)
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
@@ -283,8 +299,7 @@ export default function StepTermsAndSubmit() {
           {tenantHistory.notes.length === 0 &&
             tenantHistory.total_past_tenancies === 0 && (
               <p className="text-sm text-slate-600 italic mt-2">
-                No prior tenancy history found. You are applying as a new
-                tenant.
+                No prior tenancy history found. This is a new tenant.
               </p>
             )}
         </div>
@@ -427,9 +442,7 @@ export default function StepTermsAndSubmit() {
         >
           I confirm that the information provided is accurate and complete. I
           agree to the platform's Terms of Service and authorize the property
-          manager to verify my application details, including my tenancy
-          history. I understand that submitting this application does not
-          guarantee approval.
+          manager to verify the application details.
         </label>
       </div>
 

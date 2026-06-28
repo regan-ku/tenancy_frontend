@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation"; // ✅ ADDED
 import {
   agencyUnitManagementApi,
   UnitGroup,
@@ -8,6 +9,8 @@ import {
 } from "@/api/agencyUnitManagement.api";
 import apiClient from "@/api/axios";
 import { endpoints } from "@/config/endpoints";
+import AddTenantModal from "./AddTenantModal";
+import { useApplicationWizardStore } from "@/store/applicationWizard.store"; // ✅ ADDED
 
 interface UnitManagementTabProps {
   propertyId: number;
@@ -28,6 +31,8 @@ export default function UnitManagementTab({
   canEdit = true,
   maxFloors = 0,
 }: UnitManagementTabProps) {
+  const router = useRouter(); // ✅ ADDED
+
   const [unitGroups, setUnitGroups] = useState<UnitGroup[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +41,9 @@ export default function UnitManagementTab({
   const [editingGroup, setEditingGroup] = useState<UnitGroup | null>(null);
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
   const [addingUnitToGroup, setAddingUnitToGroup] = useState<UnitGroup | null>(
+    null,
+  );
+  const [addingTenantToUnit, setAddingTenantToUnit] = useState<Unit | null>(
     null,
   );
 
@@ -406,9 +414,7 @@ export default function UnitManagementTab({
                                       {unit.status === "available" && (
                                         <button
                                           onClick={() =>
-                                            alert(
-                                              `Navigate to Add Tenant for ${unit.unit_code}`,
-                                            )
+                                            setAddingTenantToUnit(unit)
                                           }
                                           className="w-full py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-1 shadow-sm"
                                         >
@@ -455,6 +461,45 @@ export default function UnitManagementTab({
           maxFloors={maxFloors}
           onClose={() => setAddingUnitToGroup(null)}
           onSave={handleAddUnit}
+        />
+      )}
+
+      {/* ✅ RENDER THE ADD TENANT MODAL WITH WIZARD NAVIGATION */}
+      {addingTenantToUnit && (
+        <AddTenantModal
+          unit={addingTenantToUnit}
+          onClose={() => setAddingTenantToUnit(null)}
+          onSuccess={(tenantData) => {
+            // 1. Close the modal
+            setAddingTenantToUnit(null);
+
+            // 2. Populate the Wizard Store with the new tenant's details
+            const wizardStore = useApplicationWizardStore.getState();
+            wizardStore.updateFormData({
+              applicant: tenantData.id,
+              full_name: tenantData.full_name,
+              email: tenantData.email,
+              phone_number: tenantData.phone_number,
+              // Pre-fill unit details so the wizard doesn't have to guess
+              target_unit_id: addingTenantToUnit.id,
+              propertyId: propertyId,
+              unitGroupId: addingTenantToUnit.unit_group_id,
+            });
+
+            // 3. Navigate to the Wizard with Manager Mode flags
+            const params = new URLSearchParams({
+              type: "rental",
+              mode: "manager",
+              tenant_id: tenantData.id.toString(),
+              target_unit_id: addingTenantToUnit.id.toString(),
+              property_id: propertyId.toString(),
+              unit_group_id: addingTenantToUnit.unit_group_id?.toString() || "",
+            });
+
+            router.push(
+              `/marketplace/applications/wizard?${params.toString()}`,
+            );
+          }}
         />
       )}
     </div>
