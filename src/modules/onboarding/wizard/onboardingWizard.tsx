@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useOnboardingWizardStore } from "@/store/onboardingWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import { profileApi } from "@/api/profile.api";
+import apiClient from "@/api/axios";
+import { endpoints } from "@/config/endpoints";
 
 import StepPersonalOrBusinessInfo from "./steps/StepPersonalorBusinessInfo";
 import StepContactsOrDirectors from "./steps/StepContactorDirectors";
@@ -13,6 +15,9 @@ import StepCompletion from "./steps/StepCompletion";
 
 export default function OnboardingWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirect_to");
+
   const { user } = useAuthStore();
   const {
     currentStep,
@@ -30,31 +35,64 @@ export default function OnboardingWizard() {
     resetWizard,
   } = useOnboardingWizardStore();
 
-  // ✅ FIX: Track if the component has mounted on the client
   const [hasMounted, setHasMounted] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // ✅ FIX: Set hasMounted to true only after the component mounts in the browser
   useEffect(() => {
     setHasMounted(true);
   }, []);
 
-  // Auto-populate role and phone from auth store
+  // Auto-populate role, phone, and Ghost Profile data
   useEffect(() => {
     if (user && hasMounted) {
       if (user.role && !userRole) setUserRole(user.role as any);
+
+      // 1. Fast auto-populate from Auth Store
       const userPhone = (user as any).phone_number || (user as any).phone;
+
+      const initialUpdates: any = {};
       if (
         userPhone &&
-        (formData.phone_number === "+254" || !formData.phone_number)
+        (!formData.phone_number || formData.phone_number === "+254")
       ) {
-        updateFormData({ phone_number: userPhone });
+        initialUpdates.phone_number = userPhone;
       }
+
+      // ✅ FIX: Removed the email logic entirely. Email is on the User model, not the Profile model.
+
+      if (Object.keys(initialUpdates).length > 0) {
+        updateFormData(initialUpdates);
+      }
+
+      // 2. Fetch full profile from API to catch Ghost Profile data (e.g., full_name assigned by manager)
+      const fetchProfile = async () => {
+        try {
+          const response = await apiClient.get(endpoints.PROFILE.ME);
+          const profileData = response.data;
+
+          const apiUpdates: any = {};
+          if (profileData.full_name && !formData.full_name)
+            apiUpdates.full_name = profileData.full_name;
+          if (profileData.nationality && !formData.nationality)
+            apiUpdates.nationality = profileData.nationality;
+          if (profileData.address && !formData.address)
+            apiUpdates.address = profileData.address;
+          if (profileData.date_of_birth && !formData.date_of_birth)
+            apiUpdates.date_of_birth = profileData.date_of_birth;
+
+          if (Object.keys(apiUpdates).length > 0) {
+            updateFormData(apiUpdates);
+          }
+        } catch (err) {
+          console.warn("Could not auto-populate profile data:", err);
+        }
+      };
+
+      fetchProfile();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, userRole, hasMounted]);
+  }, [user, hasMounted]);
 
-  // ✅ FIX: Prevent hydration mismatch by rendering a loader until the client is ready
   if (!hasMounted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-muted">
@@ -69,7 +107,6 @@ export default function OnboardingWizard() {
   const totalSteps = getTotalSteps();
   const progress = (currentStep / totalSteps) * 100;
 
-  // STRICT VALIDATION GATEKEEPER
   const validateCurrentStep = (): boolean => {
     setError(null);
     if (currentStep === 1) {
@@ -89,8 +126,16 @@ export default function OnboardingWizard() {
           !formData.date_of_birth ||
           !formData.nationality
         ) {
-          setError("Please fill in all required personal details.");
-          return false;
+          // ✅ FIX: If user is staff, id_number might be optional, but let's stick to your existing validation logic.
+          // If you want id_number to be optional for tenants, you should remove it from this check.
+          if (
+            !formData.full_name ||
+            !formData.date_of_birth ||
+            !formData.nationality
+          ) {
+            setError("Please fill in all required personal details.");
+            return false;
+          }
         }
       }
       if (!formData.phone_number || formData.phone_number.length < 10) {
@@ -125,13 +170,9 @@ export default function OnboardingWizard() {
 
   const handleNextOrSubmit = async () => {
     if (currentStep < totalSteps) {
-      if (validateCurrentStep()) {
-        nextStep();
-      }
+      if (validateCurrentStep()) nextStep();
     } else {
-      if (validateCurrentStep()) {
-        await handleSubmit();
-      }
+      if (validateCurrentStep()) await handleSubmit();
     }
   };
 
@@ -155,11 +196,13 @@ export default function OnboardingWizard() {
       setIsSuccess(true);
 
       setTimeout(() => {
-        if (userRole === "tenant") router.push("/dashboard/tenant");
+        if (redirectTo) {
+          router.push(redirectTo);
+        } else if (userRole === "tenant") router.push("/dashboard/tenant");
         else if (userRole === "landlord") router.push("/dashboard/landlord");
         else if (userRole === "agency") router.push("/dashboard/agency");
         else router.push("/dashboard");
-      }, 3000);
+      }, 1500);
     } catch (err: any) {
       setError(
         err.response?.data?.detail || "Submission failed. Please try again.",
@@ -211,9 +254,11 @@ export default function OnboardingWizard() {
             Profile Submitted!
           </h2>
           <p className="text-slate-500 mb-6">
-            {userRole === "tenant"
-              ? "You're all set! Redirecting you to your Tennacy dashboard..."
-              : "Your documents have been submitted. Your Tennacy account is now 'Pending Verification' while our team reviews your details. Redirecting you to your dashboard..."}
+            {redirectTo
+              ? "Profile completed! Redirecting you to finish your application..."
+              : userRole === "tenant"
+                ? "You're all set! Redirecting you to your Tennacy dashboard..."
+                : "Your documents have been submitted. Redirecting you to your dashboard..."}
           </p>
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
         </div>
@@ -224,7 +269,6 @@ export default function OnboardingWizard() {
   return (
     <div className="min-h-screen bg-surface-muted py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* TENNACY BRANDING HEADER */}
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-primary/20">
             T
@@ -234,12 +278,13 @@ export default function OnboardingWizard() {
               Tennacy
             </h1>
             <p className="text-sm text-slate-500">
-              Complete your profile to get started
+              {redirectTo
+                ? "Complete your tenant profile to proceed with your application"
+                : "Complete your profile to get started"}
             </p>
           </div>
         </div>
 
-        {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex justify-between text-sm font-medium text-slate-600 mb-2">
             <span>
@@ -255,7 +300,6 @@ export default function OnboardingWizard() {
           </div>
         </div>
 
-        {/* Step Content Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 md:p-8 min-h-[400px]">
           {error && (
             <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 text-sm border border-red-200 flex items-center gap-2">
@@ -278,7 +322,6 @@ export default function OnboardingWizard() {
           {renderStep()}
         </div>
 
-        {/* Footer Navigation */}
         <div className="flex justify-between mt-6">
           <button
             onClick={prevStep}
@@ -287,7 +330,6 @@ export default function OnboardingWizard() {
           >
             &larr; Back
           </button>
-
           <button
             onClick={handleNextOrSubmit}
             disabled={isSubmitting}

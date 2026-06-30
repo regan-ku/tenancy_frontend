@@ -1,11 +1,96 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
+// import { reportsApi } from "@/api/reports.api"; // Uncomment when backend is wired
 
 export default function AgentDashboard() {
   const { user } = useAuthStore();
+
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        // TODO: Replace with actual API call
+        // const data = await reportsApi.getDashboard('agent');
+        // setDashboardData(data);
+
+        // Mock data representing the Agent Dashboard Contract
+        setDashboardData({
+          kpis: {
+            assigned_properties: 8,
+            pending_applications: 3, // Applications this agent needs to review/approve
+            active_viewings: 5,
+            active_leads: 24,
+          },
+          viewings: [
+            {
+              id: 1,
+              time: "10:00 AM",
+              client: "John Doe",
+              property: "Kilimani Heights, Unit B-204",
+              status: "confirmed",
+            },
+            {
+              id: 2,
+              time: "11:30 AM",
+              client: "Alice Smith",
+              property: "Westlands Plaza, Shop 1",
+              status: "pending",
+            },
+            {
+              id: 3,
+              time: "02:00 PM",
+              client: "Mike Ross",
+              property: "Lavington Villas, V-02",
+              status: "confirmed",
+            },
+          ],
+          leads: [
+            {
+              id: 1,
+              name: "Sarah Connor",
+              interest: "2 Bedroom Apartment",
+              source: "Marketplace",
+            },
+            {
+              id: 2,
+              name: "Bruce Wayne",
+              interest: "Commercial Office",
+              source: "Referral",
+            },
+          ],
+          targets: {
+            current: 7,
+            goal: 10,
+          },
+        });
+      } catch (error) {
+        console.error("Failed to fetch agent dashboard", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  if (loading || !dashboardData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <p className="text-slate-500 font-medium">Loading your pipeline...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { kpis, viewings, leads, targets } = dashboardData;
+  const targetPercentage = Math.round((targets.current / targets.goal) * 100);
 
   return (
     <div className="space-y-8">
@@ -19,7 +104,10 @@ export default function AgentDashboard() {
             Here is your sales pipeline and viewing schedule for today.
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90">
+        <Link
+          href="/dashboard/agent/viewings/new"
+          className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90 transition-colors"
+        >
           <svg
             className="w-4 h-4"
             fill="none"
@@ -34,34 +122,35 @@ export default function AgentDashboard() {
             />
           </svg>
           Log New Viewing
-        </button>
+        </Link>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Assigned Properties"
-          value="8"
+          value={kpis.assigned_properties}
           icon="🏢"
           color="bg-blue-50 text-blue-600"
         />
         <KPICard
-          title="Active Leads"
-          value="24"
-          icon="👥"
-          color="bg-purple-50 text-purple-600"
+          title="Pending Applications"
+          value={kpis.pending_applications}
+          icon="📝"
+          color="bg-green-50 text-green-600"
+          subtitle="Awaiting your review"
         />
         <KPICard
           title="Viewings Today"
-          value="5"
+          value={kpis.active_viewings}
           icon="📅"
           color="bg-orange-50 text-orange-600"
         />
         <KPICard
-          title="Pending Applications"
-          value="3"
-          icon="📝"
-          color="bg-green-50 text-green-600"
+          title="Active Leads"
+          value={kpis.active_leads}
+          icon="👥"
+          color="bg-purple-50 text-purple-600"
         />
       </div>
 
@@ -83,24 +172,15 @@ export default function AgentDashboard() {
               </Link>
             </div>
             <div className="space-y-3">
-              <ViewingRow
-                time="10:00 AM"
-                client="John Doe"
-                property="Kilimani Heights, Unit B-204"
-                status="confirmed"
-              />
-              <ViewingRow
-                time="11:30 AM"
-                client="Alice Smith"
-                property="Westlands Plaza, Shop 1"
-                status="pending"
-              />
-              <ViewingRow
-                time="02:00 PM"
-                client="Mike Ross"
-                property="Lavington Villas, V-02"
-                status="confirmed"
-              />
+              {viewings.length > 0 ? (
+                viewings.map((viewing: any) => (
+                  <ViewingRow key={viewing.id} {...viewing} />
+                ))
+              ) : (
+                <p className="text-center text-slate-400 py-6">
+                  No viewings scheduled for today.
+                </p>
+              )}
             </div>
           </div>
 
@@ -111,7 +191,7 @@ export default function AgentDashboard() {
                 Recent Leads & Inquiries
               </h2>
               <Link
-                href="/dashboard/agent/viewings"
+                href="/dashboard/agent/leads"
                 className="text-xs text-primary font-bold hover:underline"
               >
                 Manage Leads →
@@ -128,42 +208,46 @@ export default function AgentDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  <tr className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-bold text-slate-800">
-                      Sarah Connor
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      2 Bedroom Apartment
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold">
-                        Marketplace
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button className="text-xs text-primary font-bold hover:underline">
-                        Contact
-                      </button>
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-bold text-slate-800">
-                      Bruce Wayne
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      Commercial Office
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-bold">
-                        Referral
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button className="text-xs text-primary font-bold hover:underline">
-                        Contact
-                      </button>
-                    </td>
-                  </tr>
+                  {leads.length > 0 ? (
+                    leads.map((lead: any) => (
+                      <tr key={lead.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-bold text-slate-800">
+                          {lead.name}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {lead.interest}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded font-bold ${
+                              lead.source === "Marketplace"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-purple-100 text-purple-700"
+                            }`}
+                          >
+                            {lead.source}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Link
+                            href={`/dashboard/agent/leads/${lead.id}`}
+                            className="text-xs text-primary font-bold hover:underline"
+                          >
+                            Contact
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-4 py-6 text-center text-slate-400"
+                      >
+                        No recent leads.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -180,16 +264,19 @@ export default function AgentDashboard() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500">Applications Approved</span>
-                <span className="font-bold text-primary-dark">7 / 10</span>
+                <span className="font-bold text-primary-dark">
+                  {targets.current} / {targets.goal}
+                </span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2.5">
                 <div
-                  className="bg-primary h-2.5 rounded-full"
-                  style={{ width: "70%" }}
+                  className="bg-primary h-2.5 rounded-full transition-all duration-500"
+                  style={{ width: `${targetPercentage}%` }}
                 ></div>
               </div>
               <p className="text-xs text-slate-400 mt-2">
-                3 more approvals needed to hit your monthly bonus tier.
+                {targets.goal - targets.current} more approvals needed to hit
+                your monthly bonus tier.
               </p>
             </div>
           </div>
@@ -200,9 +287,15 @@ export default function AgentDashboard() {
               Quick Actions
             </h2>
             <div className="space-y-3">
-              <QuickActionBtn icon="📞" label="Call Lead" />
-              <QuickActionBtn icon="📅" label="Schedule Viewing" />
-              <QuickActionBtn icon="📝" label="Submit Application" />
+              <Link href="/dashboard/agent/leads" className="block">
+                <QuickActionBtn icon="📞" label="Contact a Lead" />
+              </Link>
+              <Link href="/dashboard/agent/viewings/new" className="block">
+                <QuickActionBtn icon="📅" label="Schedule Viewing" />
+              </Link>
+              <Link href="/dashboard/agent/applications" className="block">
+                <QuickActionBtn icon="📝" label="Review Applications" />
+              </Link>
             </div>
           </div>
         </div>
@@ -215,7 +308,7 @@ export default function AgentDashboard() {
 // SUB-COMPONENTS
 // ==========================================
 
-function KPICard({ title, value, icon, color }: any) {
+function KPICard({ title, value, icon, color, subtitle }: any) {
   return (
     <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start mb-4">
@@ -226,7 +319,10 @@ function KPICard({ title, value, icon, color }: any) {
         </div>
       </div>
       <p className="text-sm text-slate-500 font-medium">{title}</p>
-      <p className="text-2xl font-extrabold text-primary-dark mt-1">{value}</p>
+      <div className="flex items-end gap-2 mt-1">
+        <p className="text-2xl font-extrabold text-primary-dark">{value}</p>
+        {subtitle && <p className="text-xs text-slate-400 mb-1">{subtitle}</p>}
+      </div>
     </div>
   );
 }
@@ -244,7 +340,11 @@ function ViewingRow({ time, client, property, status }: any) {
         </div>
       </div>
       <span
-        className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${status === "confirmed" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}
+        className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${
+          status === "confirmed"
+            ? "bg-green-100 text-green-700"
+            : "bg-yellow-100 text-yellow-700"
+        }`}
       >
         {status}
       </span>
@@ -254,9 +354,9 @@ function ViewingRow({ time, client, property, status }: any) {
 
 function QuickActionBtn({ icon, label }: any) {
   return (
-    <button className="w-full flex items-center gap-3 p-3 border border-slate-200 rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all text-left">
+    <div className="w-full flex items-center gap-3 p-3 border border-slate-200 rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all text-left cursor-pointer">
       <span className="text-xl">{icon}</span>
       <span className="text-sm font-bold text-slate-700">{label}</span>
-    </button>
+    </div>
   );
 }

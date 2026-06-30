@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { AgencyStaffMember, agencyStaffApi } from "@/api/agencyStaff.api";
 
 interface AssignStaffModalProps {
@@ -47,8 +47,6 @@ export default function AssignStaffModal({
 
   const getRoleContext = () => {
     switch (staff.role) {
-      case "property_manager":
-        return "This user will have high-level operational control (e.g., adding tenants, managing leases) over the selected properties, subject to the landlord's delegation limits.";
       case "agent":
         return "This user will handle viewings, marketing, and lead management for the selected properties.";
       case "caretaker":

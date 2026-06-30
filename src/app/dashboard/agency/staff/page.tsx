@@ -24,6 +24,7 @@ export default function AgencyStaffPage() {
   });
 
   useEffect(() => {
+    // TODO: Replace with actual API call when backend is wired
     agencyStaffApi.getStaff().then((data) => {
       setStaff(data);
       setLoading(false);
@@ -34,7 +35,8 @@ export default function AgencyStaffPage() {
     if (!formData.full_name || !formData.email || !formData.phone) {
       return alert("Please fill in all required fields.");
     }
-    // Mocking API call
+
+    // TODO: Replace mock with actual API call: await agencyStaffApi.createStaff(formData);
     const newStaff: AgencyStaffMember = {
       id: Date.now(),
       ...formData,
@@ -44,6 +46,7 @@ export default function AgencyStaffPage() {
       is_active: true,
       created_at: new Date().toISOString().split("T")[0],
     };
+
     setStaff([newStaff, ...staff]);
     setShowAddModal(false);
     setFormData({ full_name: "", email: "", phone: "", role: "agent" });
@@ -381,13 +384,15 @@ function RoleCard({ role, count }: { role: AgencyRole; count: number }) {
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
       <div
-        className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3 ${badge.color}`}
+        className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3 ${badge?.color || "bg-slate-50 text-slate-600"}`}
       >
         {role === "property_manager" ? "👑" : role === "agent" ? "🤝" : "🛠️"}
       </div>
       <p className="text-2xl font-extrabold text-primary-dark">{count}</p>
-      <p className="text-sm font-bold text-slate-700">{badge.label}</p>
-      <p className="text-xs text-slate-500 mt-1">{badge.desc}</p>
+      <p className="text-sm font-bold text-slate-700">
+        {badge?.label || "Staff"}
+      </p>
+      <p className="text-xs text-slate-500 mt-1">{badge?.desc || ""}</p>
     </div>
   );
 }

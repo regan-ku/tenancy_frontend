@@ -7,8 +7,15 @@ import { useAuthStore } from "@/store/auth.store";
 export default function StepPersonalOrBusinessInfo() {
   const { formData, updateFormData, userRole } = useOnboardingWizardStore();
   const { user } = useAuthStore();
+
   const isTenant = userRole === "tenant";
   const isAgency = userRole === "agency";
+
+  // ✅ NEW: Detect if user is Staff (Agent/Caretaker) or has pre-filled data
+  const isStaff = user?.role === "agent" || user?.role === "caretaker";
+  const isNameLocked = isStaff || !!formData.full_name;
+  const isPhoneLocked =
+    isStaff || (!!formData.phone_number && formData.phone_number !== "+254");
 
   useEffect(() => {
     if (user) {
@@ -36,9 +43,32 @@ export default function StepPersonalOrBusinessInfo() {
         <p className="text-slate-500">
           {isAgency
             ? "Provide your registered business details."
-            : "Provide your personal details. Phone number is auto-filled."}
+            : isStaff
+              ? "Your core identity details are locked. Please complete the remaining legal tenant fields."
+              : "Provide your personal details. Phone number is auto-filled."}
         </p>
       </div>
+
+      {/* ✅ NEW: Info banner for Staff members */}
+      {isStaff && !isAgency && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-center gap-2">
+          <svg
+            className="w-4 h-4 flex-shrink-0"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            ></path>
+          </svg>
+          As a staff member, your Name and Phone Number are managed by your
+          agency. Please fill in the rest of your tenant profile to proceed.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {isAgency ? (
@@ -94,9 +124,15 @@ export default function StepPersonalOrBusinessInfo() {
           </>
         ) : (
           <>
+            {/* ✅ UPDATED: Full Name with Locking Logic */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Full Legal Name *
+                {isNameLocked && (
+                  <span className="text-xs text-slate-400 font-normal ml-2">
+                    (Locked)
+                  </span>
+                )}
               </label>
               <input
                 type="text"
@@ -104,13 +140,15 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.full_name}
                 onChange={handleChange}
                 required
+                readOnly={isNameLocked}
                 pattern="^[a-zA-Z\s\-']{2,60}$"
                 title="Letters, spaces, and hyphens only (2-60 chars)"
                 maxLength={60}
                 placeholder="e.g., John Doe"
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                className={`w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none ${isNameLocked ? "bg-slate-100 cursor-not-allowed text-slate-600" : ""}`}
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 National ID / Passport Number{" "}
@@ -135,6 +173,7 @@ export default function StepPersonalOrBusinessInfo() {
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Date of Birth *
@@ -149,6 +188,7 @@ export default function StepPersonalOrBusinessInfo() {
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Nationality *
@@ -169,9 +209,15 @@ export default function StepPersonalOrBusinessInfo() {
           </>
         )}
 
+        {/* ✅ UPDATED: Phone Number with Locking Logic */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">
             {isAgency ? "Business Phone Number" : "Personal Phone Number"} *
+            {isPhoneLocked && (
+              <span className="text-xs text-slate-400 font-normal ml-2">
+                (Locked)
+              </span>
+            )}
           </label>
           <input
             type="tel"
@@ -179,11 +225,12 @@ export default function StepPersonalOrBusinessInfo() {
             value={formData.phone_number}
             onChange={handleChange}
             required
+            readOnly={isPhoneLocked}
             pattern="^(\+254|254|0)[17]\d{8}$"
             title="Format: +254712345678 or 0712345678"
             maxLength={15}
             placeholder="e.g., +254712345678"
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none bg-slate-50"
+            className={`w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none ${isPhoneLocked ? "bg-slate-100 cursor-not-allowed text-slate-600" : "bg-slate-50"}`}
           />
           <p className="text-xs text-slate-500 mt-1">
             Must be exactly 10 digits (starting with 0) or 13 characters

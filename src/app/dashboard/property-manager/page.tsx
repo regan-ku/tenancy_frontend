@@ -1,11 +1,122 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
+// import { reportsApi } from "@/api/reports.api"; // Uncomment when backend is wired
 
 export default function PropertyManagerDashboard() {
   const { user } = useAuthStore();
+
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        // TODO: Replace with actual API call
+        // const data = await reportsApi.getDashboard('property_manager');
+        // setDashboardData(data);
+
+        // Mock data representing the Property Manager Dashboard Contract
+        setDashboardData({
+          kpis: {
+            managed_units: 142,
+            occupancy_rate: 94,
+            rent_collected_month: 2100000,
+            open_maintenance: 7,
+          },
+          approvals: [
+            {
+              id: 1,
+              type: "Rental Application",
+              applicant: "David Miller",
+              unit: "Kilimani Heights, B-204",
+              urgency: "normal",
+            },
+            {
+              id: 2,
+              type: "Transfer Request",
+              applicant: "Sarah Connor",
+              unit: "Lavington Villas, V-02",
+              urgency: "high",
+            },
+            {
+              id: 3,
+              type: "Maintenance Escalation",
+              applicant: "James Mwangi (Caretaker)",
+              unit: "Westlands Plaza, Shop 1",
+              urgency: "high",
+            },
+          ],
+          staff: [
+            {
+              id: 1,
+              name: "Alice (Agent)",
+              role: "agent",
+              tasks: 12,
+              status: "High",
+            },
+            {
+              id: 2,
+              name: "James (Caretaker)",
+              role: "caretaker",
+              tasks: 5,
+              status: "Normal",
+            },
+          ],
+          activity: [
+            {
+              id: 1,
+              type: "payment",
+              message: "KES 45,000 collected for Westlands Plaza",
+              time: "15 mins ago",
+            },
+            {
+              id: 2,
+              type: "maintenance",
+              message: "Emergency leak resolved in Unit A-101",
+              time: "2 hours ago",
+            },
+            {
+              id: 3,
+              type: "tenancy",
+              message: "Lease renewed for Unit C-301",
+              time: "Yesterday",
+            },
+          ],
+        });
+      } catch (error) {
+        console.error("Failed to fetch property manager dashboard", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  if (loading || !dashboardData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          <p className="text-slate-500 font-medium">
+            Loading portfolio data...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const { kpis, approvals, staff, activity } = dashboardData;
+
+  // Format currency for KES
+  const formatCurrency = (amount: number) => {
+    if (amount >= 1000000) return `KES ${(amount / 1000000).toFixed(1)}M`;
+    if (amount >= 1000) return `KES ${(amount / 1000).toFixed(0)}K`;
+    return `KES ${amount.toLocaleString()}`;
+  };
 
   return (
     <div className="space-y-8">
@@ -21,8 +132,8 @@ export default function PropertyManagerDashboard() {
           </p>
         </div>
         <Link
-          href="/dashboard/property-manager/tenancies"
-          className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90"
+          href="/dashboard/property-manager/applications"
+          className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90 transition-colors"
         >
           <svg
             className="w-4 h-4"
@@ -37,7 +148,7 @@ export default function PropertyManagerDashboard() {
               d="M12 4v16m8-8H4"
             />
           </svg>
-          Add New Tenant
+          Review Applications
         </Link>
       </div>
 
@@ -45,25 +156,25 @@ export default function PropertyManagerDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Managed Units"
-          value="142"
+          value={kpis.managed_units}
           icon="🚪"
           color="bg-blue-50 text-blue-600"
         />
         <KPICard
           title="Occupancy Rate"
-          value="94%"
+          value={`${kpis.occupancy_rate}%`}
           icon="📈"
           color="bg-green-50 text-green-600"
         />
         <KPICard
           title="Rent Collected (Month)"
-          value="KES 2.1M"
+          value={formatCurrency(kpis.rent_collected_month)}
           icon="💰"
           color="bg-purple-50 text-purple-600"
         />
         <KPICard
           title="Open Maintenance"
-          value="7"
+          value={kpis.open_maintenance}
           icon="🛠️"
           color="bg-orange-50 text-orange-600"
         />
@@ -116,24 +227,15 @@ export default function PropertyManagerDashboard() {
               </Link>
             </div>
             <div className="space-y-3">
-              <ApprovalRow
-                type="Rental Application"
-                applicant="David Miller"
-                unit="Kilimani Heights, B-204"
-                urgency="normal"
-              />
-              <ApprovalRow
-                type="Transfer Request"
-                applicant="Sarah Connor"
-                unit="Lavington Villas, V-02"
-                urgency="high"
-              />
-              <ApprovalRow
-                type="Maintenance Escalation"
-                applicant="James Mwangi (Caretaker)"
-                unit="Westlands Plaza, Shop 1"
-                urgency="high"
-              />
+              {approvals.length > 0 ? (
+                approvals.map((item: any) => (
+                  <ApprovalRow key={item.id} {...item} />
+                ))
+              ) : (
+                <p className="text-center text-slate-400 py-6">
+                  No pending approvals.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -146,18 +248,17 @@ export default function PropertyManagerDashboard() {
               My Team's Workload
             </h2>
             <div className="space-y-3">
-              <StaffRow
-                name="Alice (Agent)"
-                tasks={12}
-                status="High"
-                color="bg-red-500"
-              />
-              <StaffRow
-                name="James (Caretaker)"
-                tasks={5}
-                status="Normal"
-                color="bg-green-500"
-              />
+              {staff.map((member: any) => (
+                <StaffRow
+                  key={member.id}
+                  name={member.name}
+                  tasks={member.tasks}
+                  status={member.status}
+                  color={
+                    member.status === "High" ? "bg-red-500" : "bg-green-500"
+                  }
+                />
+              ))}
             </div>
             <Link
               href="/dashboard/agency/staff"
@@ -173,21 +274,9 @@ export default function PropertyManagerDashboard() {
               Recent Activity
             </h2>
             <div className="space-y-4">
-              <ActivityItem
-                type="payment"
-                message="KES 45,000 collected for Westlands Plaza"
-                time="15 mins ago"
-              />
-              <ActivityItem
-                type="maintenance"
-                message="Emergency leak resolved in Unit A-101"
-                time="2 hours ago"
-              />
-              <ActivityItem
-                type="tenancy"
-                message="Lease renewed for Unit C-301"
-                time="Yesterday"
-              />
+              {activity.map((item: any) => (
+                <ActivityItem key={item.id} {...item} />
+              ))}
             </div>
           </div>
         </div>
@@ -246,7 +335,7 @@ function ApprovalRow({ type, applicant, unit, urgency }: any) {
           </p>
         </div>
       </div>
-      <button className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90">
+      <button className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90 transition-colors">
         Review
       </button>
     </div>

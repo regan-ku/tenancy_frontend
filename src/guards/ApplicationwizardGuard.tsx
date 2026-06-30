@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 
 export default function ApplicationWizardGuard({
@@ -10,33 +10,74 @@ export default function ApplicationWizardGuard({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  // ✅ FIX: Pull userState from the store to check the backend's ultimate source of truth
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const { isAuthenticated, user, isLoading, userState } = useAuthStore();
 
+  // ✅ FIX 1: Prevent Hydration Mismatch caused by Zustand localStorage hydration
+  const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
-    if (!isLoading) {
-      // ✅ BULLETPROOF CHECK:
-      // 1. Check userState (from /user-state/ endpoint - Ultimate Source of Truth)
-      // 2. Check user object (from /profile/me/ or login)
-      // 3. Fallback to false
+    setHasMounted(true);
+  }, []);
+
+  const mode = searchParams.get("mode");
+  const isManagerMode = mode === "manager";
+
+  useEffect(() => {
+    // ✅ Only run redirect logic AFTER the component has mounted on the client
+    if (!isLoading && hasMounted) {
+      if (!isAuthenticated) {
+        const currentPath =
+          pathname +
+          (searchParams?.toString() ? `?${searchParams.toString()}` : "");
+        router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+        return;
+      }
+
+      // ✅ Manager Mode Bypass
+      if (isManagerMode) {
+        return;
+      }
+
       const isProfileComplete =
         userState?.profile_complete ??
         user?.profile_complete ??
         (user as any)?.profile?.profile_complete ??
         false;
 
-      if (!isAuthenticated) {
-        router.push("/login?redirect=/marketplace/applications/wizard");
-      } else if (!isProfileComplete) {
-        console.warn(
-          "⚠️ Redirecting to onboarding because profile_complete is falsy.",
+      const isTenantReady = userState?.tenant_profile_complete ?? true;
+
+      if (!isProfileComplete) {
+        const currentPath =
+          pathname +
+          (searchParams?.toString() ? `?${searchParams.toString()}` : "");
+        router.push(
+          `/onboarding?redirect_to=${encodeURIComponent(currentPath)}`,
         );
-        router.push("/onboarding");
+      } else if (!isTenantReady) {
+        const currentPath =
+          pathname +
+          (searchParams?.toString() ? `?${searchParams.toString()}` : "");
+        router.push(
+          `/onboarding?redirect_to=${encodeURIComponent(currentPath)}`,
+        );
       }
     }
-  }, [isAuthenticated, user, userState, isLoading, router]);
+  }, [
+    isAuthenticated,
+    user,
+    userState,
+    isLoading,
+    router,
+    pathname,
+    searchParams,
+    isManagerMode,
+    hasMounted,
+  ]);
 
-  if (isLoading) {
+  // ✅ FIX 2: Render a loading state until the client has mounted and Zustand has hydrated
+  if (!hasMounted || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-muted">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
@@ -45,14 +86,24 @@ export default function ApplicationWizardGuard({
   }
 
   // Re-evaluate for the render return
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  if (isManagerMode) {
+    return <>{children}</>;
+  }
+
   const isProfileComplete =
     userState?.profile_complete ??
     user?.profile_complete ??
     (user as any)?.profile?.profile_complete ??
     false;
 
-  if (!isAuthenticated || !isProfileComplete) {
-    return null; // Render nothing while redirecting
+  const isTenantReady = userState?.tenant_profile_complete ?? true;
+
+  if (!isProfileComplete || !isTenantReady) {
+    return null;
   }
 
   return <>{children}</>;

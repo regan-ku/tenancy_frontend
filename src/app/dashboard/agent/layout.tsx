@@ -1,7 +1,8 @@
 "use client";
+
 import React, { useState } from "react";
 import StaffSidebar from "@/layouts/staff/StaffSidebar";
-import LandlordTopbar from "@/layouts/dashboard/DashboardTopbar"; // Reusing the robust topbar
+import DashboardTopbar from "@/layouts/dashboard/DashboardTopbar";
 
 export default function AgentLayout({
   children,
@@ -9,18 +10,25 @@ export default function AgentLayout({
   children: React.ReactNode;
 }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar */}
       <StaffSidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
+
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        <LandlordTopbar onMenuClick={() => setIsSidebarOpen(true)} />
+        <DashboardTopbar onMenuClick={() => setIsSidebarOpen(true)} />
+
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
           {children}
         </main>
       </div>
+
+      {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-30 lg:hidden"
