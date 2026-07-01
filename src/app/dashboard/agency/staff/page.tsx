@@ -8,6 +8,8 @@ import {
   CreateStaffPayload,
 } from "@/api/agencyStaff.api";
 import AssignStaffModal from "@/components/agency/AssignStaffModal";
+import RevokeStaffModal from "@/components/agency/RevokeStaffModal";
+import ManageStaffAccessModal from "@/components/agency/ManageStaffAcceesModal"; // ✅ NEW IMPORT
 
 export default function AgencyStaffPage() {
   const [staff, setStaff] = useState<AgencyStaffMember[]>([]);
@@ -15,41 +17,63 @@ export default function AgencyStaffPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [assigningStaff, setAssigningStaff] =
     useState<AgencyStaffMember | null>(null);
+  const [revokingStaff, setRevokingStaff] = useState<AgencyStaffMember | null>(
+    null,
+  );
 
+  // ✅ NEW: State for the Manage Access modal
+  const [managingStaff, setManagingStaff] = useState<AgencyStaffMember | null>(
+    null,
+  );
+
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
   const [formData, setFormData] = useState<CreateStaffPayload>({
     full_name: "",
     email: "",
-    phone: "",
+    phone_number: "",
     role: "agent",
   });
 
   useEffect(() => {
-    // TODO: Replace with actual API call when backend is wired
-    agencyStaffApi.getStaff().then((data) => {
-      setStaff(data);
-      setLoading(false);
-    });
+    fetchStaff();
   }, []);
 
-  const handleCreate = async () => {
-    if (!formData.full_name || !formData.email || !formData.phone) {
-      return alert("Please fill in all required fields.");
+  const fetchStaff = async () => {
+    setLoading(true);
+    try {
+      setStaff(await agencyStaffApi.getStaff());
+    } catch (error) {
+      console.error("Failed to fetch staff", error);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // TODO: Replace mock with actual API call: await agencyStaffApi.createStaff(formData);
-    const newStaff: AgencyStaffMember = {
-      id: Date.now(),
-      ...formData,
-      permissions: {} as any, // Handled by backend based on role
-      assigned_properties: [],
-      active_tasks: 0,
-      is_active: true,
-      created_at: new Date().toISOString().split("T")[0],
-    };
-
-    setStaff([newStaff, ...staff]);
-    setShowAddModal(false);
-    setFormData({ full_name: "", email: "", phone: "", role: "agent" });
+  const handleCreate = async () => {
+    if (!formData.full_name || !formData.email || !formData.phone_number) {
+      alert("Please fill in all required fields.");
+      return;
+    }
+    try {
+      const response = await agencyStaffApi.createStaff(formData);
+      setCreatedCredentials({
+        email: response.email,
+        password: response.temp_password,
+      });
+      setShowAddModal(false);
+      setFormData({
+        full_name: "",
+        email: "",
+        phone_number: "",
+        role: "agent",
+      });
+      fetchStaff();
+    } catch (error: any) {
+      alert(error.response?.data?.error || "Failed to create staff member.");
+    }
   };
 
   const getRoleBadge = (role: AgencyRole) => {
@@ -83,15 +107,14 @@ export default function AgencyStaffPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
+      {/* Header & Role Cards (Keep exactly as they are) */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary-dark">
             Internal Team & Staff
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Manage Property Managers, Agents, and Caretakers operating across
-            your delegated portfolio.
+            Manage Property Managers, Agents, and Caretakers.
           </p>
         </div>
         <button
@@ -115,7 +138,6 @@ export default function AgencyStaffPage() {
         </button>
       </div>
 
-      {/* Role Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <RoleCard
           role="property_manager"
@@ -138,9 +160,9 @@ export default function AgencyStaffPage() {
             <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4">Staff Details & Role</th>
-                <th className="px-6 py-4">Assigned Properties</th>
-                <th className="px-6 py-4">Workload</th>
+                <th className="px-6 py-4">Contact Info</th>
                 <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Joined</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -180,40 +202,19 @@ export default function AgencyStaffPage() {
                             <p className="font-bold text-slate-800">
                               {member.full_name}
                             </p>
-                            <p className="text-xs text-slate-500">
-                              {member.email} • {member.phone}
-                            </p>
+                            <span
+                              className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${badge.color}`}
+                            >
+                              {badge.label}
+                            </span>
                           </div>
                         </div>
-                        <span
-                          className={`inline-block mt-2 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${badge.color}`}
-                        >
-                          {badge.label}
-                        </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {member.assigned_properties.length > 0 ? (
-                            member.assigned_properties.map((p) => (
-                              <span
-                                key={p.id}
-                                className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-medium"
-                              >
-                                {p.name}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-slate-400 italic">
-                              Unassigned
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-lg font-extrabold text-primary-dark">
-                          {member.active_tasks}
-                        </span>
-                        <p className="text-xs text-slate-500">Active Tasks</p>
+                        <p className="text-xs text-slate-600">{member.email}</p>
+                        <p className="text-xs text-slate-400">
+                          {member.phone_number}
+                        </p>
                       </td>
                       <td className="px-6 py-4">
                         <span
@@ -222,15 +223,29 @@ export default function AgencyStaffPage() {
                           {member.is_active ? "Active" : "Revoked"}
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-xs text-slate-500">
+                        {member.date_joined}
+                      </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-3">
+                          {/* ✅ NEW: Manage Access Button */}
+                          <button
+                            onClick={() => setManagingStaff(member)}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline"
+                          >
+                            Manage Access
+                          </button>
                           <button
                             onClick={() => setAssigningStaff(member)}
                             className="text-xs text-primary hover:underline font-bold"
                           >
                             Assign Properties
                           </button>
-                          <button className="text-xs text-red-500 hover:text-red-700 font-bold">
+                          <button
+                            onClick={() => setRevokingStaff(member)}
+                            disabled={!member.is_active}
+                            className="text-xs text-red-500 hover:text-red-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
                             Revoke
                           </button>
                         </div>
@@ -244,7 +259,7 @@ export default function AgencyStaffPage() {
         </div>
       </div>
 
-      {/* Add Staff Modal */}
+      {/* Modals */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
@@ -274,16 +289,9 @@ export default function AgencyStaffPage() {
                   }
                   className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-primary outline-none"
                 >
-                  <option value="property_manager">
-                    Property Manager (Can add tenants, manage tenancies, oversee
-                    staff)
-                  </option>
-                  <option value="agent">
-                    Field Agent (Viewings, marketing, lead management)
-                  </option>
-                  <option value="caretaker">
-                    Caretaker (Maintenance, inspections, field ops)
-                  </option>
+                  <option value="property_manager">Property Manager</option>
+                  <option value="agent">Field Agent</option>
+                  <option value="caretaker">Caretaker</option>
                 </select>
               </div>
               <div>
@@ -319,9 +327,9 @@ export default function AgencyStaffPage() {
                   </label>
                   <input
                     type="text"
-                    value={formData.phone}
+                    value={formData.phone_number}
                     onChange={(e) =>
-                      setFormData({ ...formData, phone: e.target.value })
+                      setFormData({ ...formData, phone_number: e.target.value })
                     }
                     className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                   />
@@ -346,28 +354,90 @@ export default function AgencyStaffPage() {
         </div>
       )}
 
-      {/* Assign Properties Modal */}
+      {createdCredentials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8">
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+              ✅
+            </div>
+            <h2 className="text-xl font-bold text-primary-dark mb-2">
+              Staff Account Created!
+            </h2>
+            <p className="text-sm text-slate-500 mb-6">
+              Share these temporary credentials with the staff member.
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-left space-y-3 mb-6">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Email
+                </p>
+                <p className="text-sm font-bold text-slate-800 break-all">
+                  {createdCredentials.email}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Temporary Password
+                </p>
+                <p className="text-sm font-mono font-bold text-primary break-all bg-primary/5 p-2 rounded border border-primary/20">
+                  {createdCredentials.password}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setCreatedCredentials(null)}
+              className="w-full px-8 py-2.5 bg-primary text-white font-bold rounded-lg shadow-md hover:bg-primary/90"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
       {assigningStaff && (
         <AssignStaffModal
           staff={assigningStaff}
           onClose={() => setAssigningStaff(null)}
           onSave={() => {
-            // Refresh staff data in production
             setAssigningStaff(null);
+            fetchStaff();
           }}
+        />
+      )}
+
+      {revokingStaff && (
+        <RevokeStaffModal
+          staff={revokingStaff}
+          onClose={() => setRevokingStaff(null)}
+          onSuccess={() => {
+            setRevokingStaff(null);
+            fetchStaff();
+          }}
+        />
+      )}
+
+      {/* ✅ NEW: Manage Access Modal */}
+      {managingStaff && (
+        <ManageStaffAccessModal
+          staff={managingStaff}
+          onClose={() => setManagingStaff(null)}
+          onRevoke={() => {
+            setManagingStaff(null);
+            setRevokingStaff(managingStaff); // Opens the full revocation modal
+          }}
+          onAssignmentChange={fetchStaff}
         />
       )}
     </div>
   );
 }
 
-// Sub-components
 function RoleCard({ role, count }: { role: AgencyRole; count: number }) {
   const badge = {
     property_manager: {
       label: "Property Managers",
       color: "bg-purple-50 text-purple-600",
-      desc: "Virtual landlords. Manage tenancies & staff.",
+      desc: "Oversees operations, approvals & staff.",
     },
     agent: {
       label: "Field Agents",

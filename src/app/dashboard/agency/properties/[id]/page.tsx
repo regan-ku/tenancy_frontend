@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   agencyPropertiesApi,
   AgencyPropertyDetail,
+  PropertyTeamMember, // ✅ NEW IMPORT
 } from "@/api/agencyProperties.api";
 import {
   agencyUnitManagementApi,
@@ -168,6 +169,10 @@ export default function AgencyPropertyDetailPage() {
       availableTabs.push({ key: "overview", label: "Overview & Settings" });
     if (property.permissions?.can_manage_units)
       availableTabs.push({ key: "units", label: "Unit Management" });
+
+    // ✅ NEW: Added Property Team Tab (Visible to anyone who can view the property)
+    availableTabs.push({ key: "team", label: "Property Team" });
+
     availableTabs.push({ key: "media", label: "Media & Gallery" });
     if (property.permissions?.can_view_tenants)
       availableTabs.push({ key: "tenants", label: "Tenants & Financials" });
@@ -400,7 +405,7 @@ export default function AgencyPropertyDetailPage() {
               />
             </div>
 
-            {/* ✅ UPGRADED: Unit Groups Overview with Occupancy Stats */}
+            {/* Unit Groups Overview with Occupancy Stats */}
             <div className="space-y-4">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <h3 className="text-sm font-bold text-slate-500 uppercase">
@@ -426,7 +431,6 @@ export default function AgencyPropertyDetailPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {unitGroups.map((group) => {
-                    // ✅ Calculate stats from Tenancy source of truth
                     const totalUnits = (group as any).actual_units_count || 0;
                     const occupied = (group as any).occupied_units || 0;
                     const available = (group as any).available_units || 0;
@@ -748,6 +752,10 @@ export default function AgencyPropertyDetailPage() {
             maxFloors={property.number_of_floors || 0}
           />
         )}
+
+        {/* ✅ NEW: Property Team Tab */}
+        {activeTab === "team" && <PropertyTeamTab propertyId={Number(id)} />}
+
         {activeTab === "media" && (
           <PropertyMediaHub
             propertyId={Number(id)}
@@ -775,6 +783,166 @@ export default function AgencyPropertyDetailPage() {
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// ✅ NEW: PROPERTY TEAM TAB COMPONENT
+// ==========================================
+function PropertyTeamTab({ propertyId }: { propertyId: number }) {
+  const [team, setTeam] = useState<PropertyTeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    agencyPropertiesApi.getPropertyTeam(propertyId).then((data) => {
+      setTeam(data);
+      setLoading(false);
+    });
+  }, [propertyId]);
+
+  const getRoleBadge = (role: string) => {
+    switch (role) {
+      case "property_manager":
+        return {
+          label: "Property Manager",
+          color: "bg-purple-100 text-purple-700",
+          icon: "👑",
+        };
+      case "agent":
+        return {
+          label: "Field Agent",
+          color: "bg-blue-100 text-blue-700",
+          icon: "🤝",
+        };
+      case "caretaker":
+        return {
+          label: "Caretaker",
+          color: "bg-green-100 text-green-700",
+          icon: "🛠️",
+        };
+      default:
+        return {
+          label: "Staff",
+          color: "bg-slate-100 text-slate-600",
+          icon: "👤",
+        };
+    }
+  };
+
+  if (loading)
+    return (
+      <div className="text-center py-12 text-slate-400">Loading team...</div>
+    );
+
+  if (team.length === 0) {
+    return (
+      <div className="text-center py-16 space-y-4">
+        <div className="w-16 h-16 mx-auto bg-slate-100 rounded-full flex items-center justify-center text-3xl">
+          👥
+        </div>
+        <h3 className="text-lg font-bold text-slate-800">No Team Assigned</h3>
+        <p className="text-sm text-slate-500 max-w-md mx-auto">
+          No staff members are currently assigned to this property. Go to the
+          Staff Management page to assign agents or caretakers.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+        <h2 className="text-lg font-bold text-slate-800">
+          Property Team & Assignments
+        </h2>
+        <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-bold">
+          {team.length} Member{team.length > 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {team.map((member) => {
+          const badge = getRoleBadge(member.operational_role);
+          return (
+            <div
+              key={member.id}
+              className="bg-white p-5 rounded-xl border border-slate-200 hover:border-primary/50 hover:shadow-md transition-all"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-12 h-12 rounded-full flex items-center justify-center text-xl ${badge.color}`}
+                  >
+                    {badge.icon}
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800">
+                      {member.user_name || "Unnamed Staff"}
+                    </p>
+                    <span
+                      className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${badge.color}`}
+                    >
+                      {badge.label}
+                    </span>
+                  </div>
+                </div>
+                {!member.is_active && (
+                  <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase">
+                    Inactive
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <svg
+                    className="w-4 h-4 text-slate-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
+                  </svg>
+                  <span className="truncate">{member.user_email}</span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-600">
+                  <svg
+                    className="w-4 h-4 text-slate-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                    />
+                  </svg>
+                  <span className="font-medium">
+                    {member.user_phone || "No phone"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-slate-400 text-xs pt-2 border-t border-slate-100 mt-2">
+                  <span>Assigned by:</span>
+                  <span className="font-bold text-slate-600 capitalize">
+                    {member.assigned_by_entity_type}{" "}
+                    {member.assigned_by_agency_name
+                      ? `(${member.assigned_by_agency_name})`
+                      : ""}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

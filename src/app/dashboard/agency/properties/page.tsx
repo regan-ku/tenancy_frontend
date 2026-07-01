@@ -12,17 +12,75 @@ export default function AgencyPropertiesPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "owned" | "delegated">("all");
 
+  // ✅ NEW: State for the Relinquish Modal
+  const [relinquishingProperty, setRelinquishingProperty] =
+    useState<AgencyProperty | null>(null);
+  const [relinquishReason, setRelinquishReason] = useState("");
+  const [relinquishConfirmText, setRelinquishConfirmText] = useState("");
+  const [isRelinquishing, setIsRelinquishing] = useState(false);
+  const [relinquishError, setRelinquishError] = useState("");
+
   useEffect(() => {
-    agencyPropertiesApi.getManagedProperties().then((data) => {
-      setProperties(data);
-      setLoading(false);
-    });
+    fetchProperties();
   }, []);
+
+  const fetchProperties = async () => {
+    setLoading(true);
+    try {
+      const data = await agencyPropertiesApi.getManagedProperties();
+      setProperties(data);
+    } catch (error) {
+      console.error("Failed to fetch properties", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredProperties = properties.filter((p) => {
     if (filter === "all") return true;
     return p.ownership_type === filter;
   });
+
+  // ✅ NEW: Handle Relinquishment
+  const handleRelinquish = async () => {
+    if (relinquishConfirmText !== "RELINQUISH") {
+      setRelinquishError("Please type 'RELINQUISH' exactly to confirm.");
+      return;
+    }
+    if (!relinquishReason.trim()) {
+      setRelinquishError(
+        "Please provide a reason for relinquishing this property.",
+      );
+      return;
+    }
+    if (!relinquishingProperty?.delegation_id) {
+      setRelinquishError("System error: Delegation ID missing.");
+      return;
+    }
+
+    setIsRelinquishing(true);
+    setRelinquishError("");
+    try {
+      await agencyPropertiesApi.relinquishProperty(
+        relinquishingProperty.delegation_id,
+        relinquishReason,
+      );
+      alert(
+        "✅ Successfully relinquished property. The landlord has been notified.",
+      );
+      setRelinquishingProperty(null);
+      setRelinquishReason("");
+      setRelinquishConfirmText("");
+      fetchProperties(); // Refresh the list
+    } catch (error: any) {
+      console.error("Failed to relinquish", error);
+      setRelinquishError(
+        error.response?.data?.error || "Failed to relinquish property.",
+      );
+    } finally {
+      setIsRelinquishing(false);
+    }
+  };
 
   const getDelegationBadge = (prop: AgencyProperty) => {
     if (prop.ownership_type === "owned") {
@@ -125,7 +183,7 @@ export default function AgencyPropertiesPage() {
               .map((_, i) => (
                 <div
                   key={i}
-                  className="h-56 bg-slate-100 animate-pulse rounded-2xl"
+                  className="h-64 bg-slate-100 animate-pulse rounded-2xl"
                 ></div>
               ))
           : filteredProperties.map((prop) => (
@@ -172,17 +230,117 @@ export default function AgencyPropertiesPage() {
                 </div>
 
                 {/* Card Footer (Actions) */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100">
+                <div className="p-4 bg-slate-50 border-t border-slate-100 space-y-2">
                   <Link
                     href={`/dashboard/agency/properties/${prop.id}`}
                     className="block w-full text-center bg-white border border-slate-200 hover:border-primary text-primary hover:bg-primary/5 text-xs font-bold py-2.5 rounded-lg transition-colors"
                   >
                     Manage Property →
                   </Link>
+
+                  {/* ✅ NEW: Relinquish Button (Only shows for delegated properties) */}
+                  {prop.ownership_type === "delegated" && (
+                    <button
+                      onClick={() => setRelinquishingProperty(prop)}
+                      className="block w-full text-center bg-red-50 border border-red-200 hover:border-red-500 text-red-600 hover:bg-red-100 text-xs font-bold py-2.5 rounded-lg transition-colors"
+                    >
+                      Relinquish Delegation
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
       </div>
+
+      {/* ✅ NEW: Relinquish Confirmation Modal */}
+      {relinquishingProperty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 bg-red-50">
+              <h2 className="text-xl font-bold text-red-800">
+                Relinquish Property Management
+              </h2>
+              <p className="text-sm text-red-600 mt-1">
+                You are about to give up management of{" "}
+                <strong>{relinquishingProperty.name}</strong>. All agency staff
+                will lose access, and control will revert to the landlord.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {relinquishError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+                  ⚠️ {relinquishError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Reason for Relinquishing *
+                </label>
+                <textarea
+                  value={relinquishReason}
+                  onChange={(e) => setRelinquishReason(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none"
+                  placeholder="e.g., Contract ended, Landlord requested, Capacity issues..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Type{" "}
+                  <span className="text-red-600 font-mono">RELINQUISH</span> to
+                  confirm
+                </label>
+                <input
+                  type="text"
+                  value={relinquishConfirmText}
+                  onChange={(e) =>
+                    setRelinquishConfirmText(e.target.value.toUpperCase())
+                  }
+                  className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none font-mono tracking-widest"
+                  placeholder="RELINQUISH"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setRelinquishingProperty(null);
+                  setRelinquishError("");
+                  setRelinquishReason("");
+                  setRelinquishConfirmText("");
+                }}
+                className="px-6 py-2.5 text-slate-600 font-medium hover:text-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRelinquish}
+                disabled={
+                  isRelinquishing ||
+                  relinquishConfirmText !== "RELINQUISH" ||
+                  !relinquishReason.trim()
+                }
+                className="px-8 py-2.5 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isRelinquishing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Relinquishing...
+                  </>
+                ) : (
+                  "Confirm Relinquishment"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { endpoints } from "@/config/endpoints";
 // ==========================================
 export interface AgencyProperty {
   id: number;
+  delegation_id?: number | null; // ✅ NEW: Required to call the relinquish endpoint
   name: string;
   location: string;
   total_units: number;
@@ -69,6 +70,19 @@ export interface PropertyMedia {
   created_at: string;
 }
 
+export interface PropertyTeamMember {
+  id: number;
+  user: number;
+  user_email: string;
+  user_name: string;
+  user_phone: string;
+  operational_role: "caretaker" | "agent" | "property_manager";
+  assigned_by_entity_type: "landlord" | "agency";
+  assigned_by_agency_name: string | null;
+  is_active: boolean;
+  assigned_at: string;
+}
+
 // ==========================================
 // API METHODS
 // ==========================================
@@ -98,13 +112,12 @@ export const agencyPropertiesApi = {
 
         return {
           id: prop.id,
+          delegation_id: prop.delegation_id || null, // ✅ NEW
           name: prop.title,
           location: locationString,
-          // ✅ FIX: Use actual calculated values from backend
           total_units: prop.total_units || prop.total_units_capacity || 0,
           occupied_units: prop.occupied_units || 0,
           available_units: prop.available_units || 0,
-          // ✅ FIX: Use backend-calculated occupancy rate instead of hardcoding to 0
           occupancy_rate: prop.occupancy_rate || 0,
           ownership_type: isDelegated ? "delegated" : "owned",
           landlord_name: prop.landlord_name || "Unknown Owner",
@@ -150,13 +163,12 @@ export const agencyPropertiesApi = {
 
       return {
         id: prop.id,
+        delegation_id: prop.delegation_id || null, // ✅ NEW
         name: prop.title,
         location: locationString,
-        // ✅ FIX: Use actual calculated values from backend
         total_units: prop.total_units || prop.total_units_capacity || 0,
         occupied_units: prop.occupied_units || 0,
         available_units: prop.available_units || 0,
-        // ✅ FIX: Use backend-calculated occupancy rate
         occupancy_rate: prop.occupancy_rate || 0,
         ownership_type: isDelegated ? "delegated" : "owned",
         landlord_name: prop.landlord_name || "Unknown Owner",
@@ -314,5 +326,27 @@ export const agencyPropertiesApi = {
     const filename = mediaUrl.split("/").pop() || "cover.jpg";
     const file = new File([blob], filename, { type: blob.type });
     return await agencyPropertiesApi.updateCoverPhoto(propertyId, file);
+  },
+
+  getPropertyTeam: async (
+    propertyId: number,
+  ): Promise<PropertyTeamMember[]> => {
+    try {
+      const response = await apiClient.get(`/properties/${propertyId}/staff/`);
+      return response.data;
+    } catch (error) {
+      console.error("Failed to fetch property team:", error);
+      return [];
+    }
+  },
+
+  // ✅ NEW: Relinquish Delegation
+  relinquishProperty: async (
+    delegationId: number,
+    reason: string,
+  ): Promise<void> => {
+    await apiClient.post(`/agencies/delegations/${delegationId}/relinquish/`, {
+      reason,
+    });
   },
 };
