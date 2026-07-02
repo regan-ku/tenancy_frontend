@@ -6,6 +6,7 @@ import {
   usePropertyWizardStore,
   SINGLE_UNIT_SUB_TYPES,
 } from "@/store/propertyWizard.store";
+import { useAuthStore } from "@/store/auth.store"; // ✅ ADDED IMPORT
 import { propertiesApi } from "@/api/properties.api";
 
 import PropertyWizardGuard from "@/guards/propertyWizardGuard.guard";
@@ -37,6 +38,9 @@ function PropertyWizardContent() {
   const searchParams = useSearchParams();
   const propertyIdFromUrl = searchParams.get("property_id");
 
+  // ✅ ADDED: Get the current user from the auth store
+  const { user } = useAuthStore();
+
   const {
     currentStep,
     formData,
@@ -54,18 +58,15 @@ function PropertyWizardContent() {
     setError,
     setPropertyId,
     updateFormData,
-    setDraftSaved, // ✅ Ensure this is destructured from your store
+    setDraftSaved,
   } = usePropertyWizardStore();
 
   // ✅🚨 DRAFT HYDRATION: Resume exactly where you left off!
   useEffect(() => {
     const hydrateDraft = async () => {
-      // If we have an ID from the URL (provided by backend user-state)
-      // and the store is empty, fetch and hydrate.
       if (propertyIdFromUrl && !propertyId) {
         setSubmitting(true);
         try {
-          // 1. Fetch the property draft
           const propertyData = await propertiesApi.getProperty(
             Number(propertyIdFromUrl),
           );
@@ -102,16 +103,15 @@ function PropertyWizardContent() {
 
           updateFormData(hydratedData);
           setPropertyId(Number(propertyIdFromUrl));
-          setDraftSaved(true); // Mark as saved so it doesn't create a new one at Step 3
+          setDraftSaved(true);
 
-          // 2. Fetch unit groups if they already exist
           try {
             const unitGroupsRes = await propertiesApi.getUnitGroups(
               Number(propertyIdFromUrl),
             );
             if (unitGroupsRes.results && unitGroupsRes.results.length > 0) {
               const groups = unitGroupsRes.results.map((ug) => ({
-                id: String(ug.id), // Use real DB ID
+                id: String(ug.id),
                 name: ug.name,
                 unit_type: ug.unit_type,
                 floor_range: ug.floor_range,
@@ -136,7 +136,7 @@ function PropertyWizardContent() {
     };
 
     hydrateDraft();
-  }, [propertyIdFromUrl, propertyId]); // Only run when URL param changes or propertyId in store changes
+  }, [propertyIdFromUrl, propertyId]);
 
   // Auto-skip Step 4 if it's a single unit property
   useEffect(() => {
@@ -145,7 +145,7 @@ function PropertyWizardContent() {
       formData.is_single_unit_property;
 
     if (isSingleUnit && currentStep === 4) {
-      goToStep(5); // Skip to Media
+      goToStep(5);
     }
   }, [
     formData.property_sub_type,
@@ -155,7 +155,6 @@ function PropertyWizardContent() {
   ]);
 
   const handleNext = async () => {
-    // CRITICAL: Save to DB before moving to Unit Groups (Step 4)
     if (currentStep === 3 && !isDraftSaved) {
       await saveProperty();
       if (usePropertyWizardStore.getState().isDraftSaved) {
@@ -164,7 +163,6 @@ function PropertyWizardContent() {
       return;
     }
 
-    // ✅🚨 STRICT VALIDATION & FINALIZATION FOR STEP 4 (UNIT GROUPS)
     if (currentStep === 4) {
       const groups = formData.unit_groups || [];
       const maxFloors = formData.number_of_floors || 1;
@@ -191,7 +189,6 @@ function PropertyWizardContent() {
         return;
       }
 
-      // ✅ ARCHITECTURAL BRIDGE: Save Unit Groups to DB and Generate Units
       setSubmitting(true);
       setError("Saving unit groups and generating units...");
 
@@ -213,13 +210,15 @@ function PropertyWizardContent() {
     nextStep();
   };
 
+  // ✅ FIXED: Dynamically route to the correct dashboard based on user role
   const handleCancel = () => {
     if (
       confirm(
         "Exit wizard? Your draft is saved and will resume when you return.",
       )
     ) {
-      router.push("/dashboard/landlord");
+      const userRole = user?.role || "landlord"; // Fallback to landlord if undefined
+      router.push(`/dashboard/${userRole}`);
     }
   };
 

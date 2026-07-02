@@ -65,184 +65,114 @@ export interface AudienceSegment {
 // ==========================================
 export const agencyIntelligenceApi = {
   // 1. REPORTS & ANALYTICS
+  // ✅ FIXED: Updated to "/reports/reports/..." to match the DRF router's generated URL structure
   getPortfolioMetrics: async (): Promise<PortfolioMetric[]> => {
-    return [
-      {
-        property_name: "Kilimani Heights",
-        landlord_name: "David Miller",
-        total_units: 40,
-        occupancy_rate: 95,
-        rent_collected: 2850000,
-        arrears: 150000,
-        maintenance_open: 3,
-      },
-      {
-        property_name: "Westlands Plaza",
-        landlord_name: "Sarah Connor",
-        total_units: 12,
-        occupancy_rate: 83,
-        rent_collected: 900000,
-        arrears: 200000,
-        maintenance_open: 1,
-      },
-      {
-        property_name: "Lavington Villas",
-        landlord_name: "John Doe",
-        total_units: 10,
-        occupancy_rate: 100,
-        rent_collected: 800000,
-        arrears: 0,
-        maintenance_open: 0,
-      },
-    ];
+    const response = await apiClient.get("/reports/reports/portfolio-metrics/");
+    return response.data;
   },
 
   getMaintenanceAnalytics: async (): Promise<MaintenanceAnalytics> => {
-    return {
-      total_requests: 142,
-      resolved_within_sla: 128,
-      breached_sla: 14,
-      avg_resolution_time_hours: 18,
-    };
+    const response = await apiClient.get(
+      "/reports/reports/maintenance-analytics/",
+    );
+    return response.data;
   },
 
   getLandlordStatements: async (): Promise<LandlordStatement[]> => {
-    return [
-      {
-        id: "ST-001",
-        landlord_name: "David Miller",
-        period: "June 2026",
-        gross_rent: 2850000,
-        agency_fee: 285000,
-        net_payout: 2565000,
-        status: "sent",
-      },
-      {
-        id: "ST-002",
-        landlord_name: "Sarah Connor",
-        period: "June 2026",
-        gross_rent: 900000,
-        agency_fee: 90000,
-        net_payout: 810000,
-        status: "generated",
-      },
-    ];
+    const response = await apiClient.get(
+      "/reports/reports/landlord-statements/",
+    );
+    return response.data;
   },
 
   generateStatementPDF: async (statementId: string) => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return { success: true, url: `/downloads/${statementId}.pdf` };
+    // ✅ FIXED: Updated to "/reports/reports/..."
+    const response = await apiClient.get(
+      `/reports/reports/statements/${statementId}/export/pdf/`,
+      {
+        responseType: "blob",
+      },
+    );
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `statement-${statementId}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+    return { success: true };
+  },
+
+  exportPortfolioExcel: async () => {
+    // ✅ FIXED: Updated to "/reports/reports/..."
+    const response = await apiClient.get(
+      "/reports/reports/export/portfolio/excel/",
+      {
+        responseType: "blob",
+      },
+    );
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `portfolio-report-${new Date().toISOString().split("T")[0]}.xlsx`,
+    );
+    document.body.appendChild(link);
+    link.click();
+
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+    return { success: true };
+  },
+
+  generateReport: async (
+    title: string,
+    reportType: string,
+    parameters: any = {},
+  ) => {
+    // ✅ FIXED: Updated to "/reports/reports/..."
+    const response = await apiClient.post("/reports/reports/", {
+      title,
+      report_type: reportType,
+      parameters,
+    });
+    return response.data;
   },
 
   // 2. COMMUNICATIONS & CAMPAIGNS
   getNotifications: async (): Promise<SystemNotification[]> => {
-    return [
-      {
-        id: "N1",
-        type: "payment",
-        title: "Rent Received",
-        message: "KES 45,000 received for Kilimani Heights, Unit B-204.",
-        is_read: false,
-        created_at: "10 mins ago",
-      },
-      {
-        id: "N2",
-        type: "maintenance",
-        title: "SLA Breach Alert",
-        message:
-          "Emergency plumbing issue at Westlands Plaza exceeds 2-hour SLA.",
-        is_read: false,
-        created_at: "1 hour ago",
-      },
-      {
-        id: "N3",
-        type: "application",
-        title: "New Application",
-        message: "David Miller applied for Lavington Villas, Unit V-02.",
-        is_read: true,
-        created_at: "3 hours ago",
-      },
-      {
-        id: "N4",
-        type: "compliance",
-        title: "Director Verification",
-        message: "Agency director Jane Smith's ID was verified by Admin.",
-        is_read: true,
-        created_at: "Yesterday",
-      },
-    ];
+    const response = await apiClient.get("/communications/notifications/");
+    return response.data;
   },
 
   markNotificationRead: async (id: string) => {
-    return apiClient.patch(`/api/communications/notifications/${id}/read/`);
+    const response = await apiClient.patch(
+      `/communications/notifications/${id}/read/`,
+    );
+    return response.data;
   },
 
   getCampaigns: async (): Promise<Campaign[]> => {
-    return [
-      {
-        id: "C1",
-        name: "June Rent Reminders",
-        channel: "whatsapp",
-        audience_size: 340,
-        delivered: 335,
-        failed: 5,
-        status: "sent",
-        created_at: "2026-06-01",
-      },
-      {
-        id: "C2",
-        name: "Water Rationing Notice",
-        channel: "sms",
-        audience_size: 40,
-        delivered: 40,
-        failed: 0,
-        status: "sent",
-        created_at: "2026-06-10",
-      },
-      {
-        id: "C3",
-        name: "Q3 Arrears Escalation",
-        channel: "sms",
-        audience_size: 12,
-        delivered: 0,
-        failed: 0,
-        status: "scheduled",
-        created_at: "2026-06-18",
-      },
-    ];
+    const response = await apiClient.get("/communications/campaigns/");
+    return response.data;
   },
 
   getAudienceSegments: async (): Promise<AudienceSegment[]> => {
-    return [
-      {
-        id: "A1",
-        name: "All Active Tenants",
-        description:
-          "Every tenant with an active tenancy across all delegated properties.",
-        estimated_count: 340,
-      },
-      {
-        id: "A2",
-        name: "Overdue Tenants",
-        description: "Tenants with outstanding arrears > 0.",
-        estimated_count: 12,
-      },
-      {
-        id: "A3",
-        name: "Kilimani Heights Residents",
-        description: "Tenants specifically assigned to Kilimani Heights.",
-        estimated_count: 38,
-      },
-      {
-        id: "A4",
-        name: "Leases Expiring in 30 Days",
-        description: "Tenants approaching lease renewal window.",
-        estimated_count: 8,
-      },
-    ];
+    const response = await apiClient.get(
+      "/communications/campaigns/audience-segments/",
+    );
+    return response.data;
   },
 
   sendCampaign: async (data: any) => {
-    return apiClient.post("/api/communications/campaigns/", data);
+    const response = await apiClient.post("/communications/campaigns/", data);
+    return response.data;
   },
 };

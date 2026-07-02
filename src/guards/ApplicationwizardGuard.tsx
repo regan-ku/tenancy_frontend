@@ -12,21 +12,23 @@ export default function ApplicationWizardGuard({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { isAuthenticated, isLoading, userState, fetchUserState } =
+    useAuthStore();
 
-  const { isAuthenticated, user, isLoading, userState } = useAuthStore();
-
-  // ✅ FIX 1: Prevent Hydration Mismatch caused by Zustand localStorage hydration
+  // ✅ FIX: Prevent Hydration Mismatch
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
     setHasMounted(true);
   }, []);
 
+  // ✅ Detect if the manager is creating an application on behalf of someone else
   const mode = searchParams.get("mode");
   const isManagerMode = mode === "manager";
 
   useEffect(() => {
-    // ✅ Only run redirect logic AFTER the component has mounted on the client
-    if (!isLoading && hasMounted) {
+    if (isLoading || !hasMounted) return;
+
+    const checkAccess = async () => {
       if (!isAuthenticated) {
         const currentPath =
           pathname +
@@ -35,19 +37,18 @@ export default function ApplicationWizardGuard({
         return;
       }
 
-      // ✅ Manager Mode Bypass
-      if (isManagerMode) {
-        return;
+      let currentState = userState;
+      if (!currentState || currentState.profile_complete === undefined) {
+        try {
+          currentState = await fetchUserState();
+        } catch (e) {
+          console.error("ApplicationWizardGuard failed to fetch user state", e);
+        }
       }
 
-      const isProfileComplete =
-        userState?.profile_complete ??
-        user?.profile_complete ??
-        (user as any)?.profile?.profile_complete ??
-        false;
+      const isProfileComplete = currentState?.profile_complete ?? false;
 
-      const isTenantReady = userState?.tenant_profile_complete ?? true;
-
+      // 1. Everyone must have a complete base profile
       if (!isProfileComplete) {
         const currentPath =
           pathname +
@@ -55,7 +56,20 @@ export default function ApplicationWizardGuard({
         router.push(
           `/onboarding?redirect_to=${encodeURIComponent(currentPath)}`,
         );
-      } else if (!isTenantReady) {
+        return;
+      }
+
+      // 2. ✅ CRITICAL: If in Manager Mode, bypass the tenant_profile_complete check.
+      // The manager is applying on behalf of a tenant, so the manager's personal DOB/NOK is irrelevant.
+      if (isManagerMode) {
+        return;
+      }
+
+      // 3. For normal users (Tenants/Staff applying for themselves),
+      // they MUST have completed their tenant profile (DOB + Next of Kin).
+      const isTenantReady = currentState?.tenant_profile_complete ?? false;
+
+      if (!isTenantReady) {
         const currentPath =
           pathname +
           (searchParams?.toString() ? `?${searchParams.toString()}` : "");
@@ -63,20 +77,21 @@ export default function ApplicationWizardGuard({
           `/onboarding?redirect_to=${encodeURIComponent(currentPath)}`,
         );
       }
-    }
+    };
+
+    checkAccess();
   }, [
     isAuthenticated,
-    user,
     userState,
     isLoading,
+    hasMounted,
     router,
     pathname,
     searchParams,
     isManagerMode,
-    hasMounted,
+    fetchUserState,
   ]);
 
-  // ✅ FIX 2: Render a loading state until the client has mounted and Zustand has hydrated
   if (!hasMounted || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-muted">
@@ -85,25 +100,15 @@ export default function ApplicationWizardGuard({
     );
   }
 
-  // Re-evaluate for the render return
-  if (!isAuthenticated) {
-    return null;
-  }
+  if (!isAuthenticated) return null;
 
-  if (isManagerMode) {
-    return <>{children}</>;
-  }
+  const isProfileComplete = userState?.profile_complete ?? false;
+  if (!isProfileComplete) return null;
 
-  const isProfileComplete =
-    userState?.profile_complete ??
-    user?.profile_complete ??
-    (user as any)?.profile?.profile_complete ??
-    false;
-
-  const isTenantReady = userState?.tenant_profile_complete ?? true;
-
-  if (!isProfileComplete || !isTenantReady) {
-    return null;
+  // If not manager mode, we must also ensure tenant_profile_complete is true before rendering
+  if (!isManagerMode) {
+    const isTenantReady = userState?.tenant_profile_complete ?? false;
+    if (!isTenantReady) return null;
   }
 
   return <>{children}</>;

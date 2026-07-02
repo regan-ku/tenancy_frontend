@@ -17,8 +17,6 @@ export default function StepPublish() {
     "rental" | "sale" | "short_stay"
   >("rental");
   const [error, setError] = useState<string | null>(null);
-
-  // ✅ NEW: State to trigger the full-screen redirect mask
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   const handlePublish = async () => {
@@ -30,32 +28,27 @@ export default function StepPublish() {
         throw new Error("Property ID is missing. Cannot publish.");
       }
 
-      // 1. Update backend (Marks wizard as complete & sets marketplace visibility)
+      // 1. Update backend
       await propertiesApi.updateProperty(propertyId, {
         is_active: true,
         is_published: publishToMarketplace,
         listing_type: publishToMarketplace ? listingType : null,
       });
 
-      // ✅ 2. Show the full-screen success/redirect mask BEFORE resetting state.
-      // This prevents the user from seeing the UI flash back to Step 1.
+      // 2. Show the full-screen success/redirect mask
       setIsRedirecting(true);
 
-      // 3. Reset the Zustand store (Clears drafts, sets step back to 1).
-      // Because the mask is covering the screen, the user won't see this happen.
+      // 3. Reset the Zustand store
       resetWizard();
 
       // 4. Navigate to the appropriate dashboard
-      // We use a tiny timeout to ensure the router catches the state change smoothly
       setTimeout(() => {
-        if (user?.role === "agency") {
-          router.push("/dashboard/agency");
-        } else {
-          router.push("/dashboard/landlord");
-        }
+        // ✅ FIXED: Dynamically route based on user role
+        const userRole = user?.role || "landlord";
+        router.push(`/dashboard/${userRole}`);
       }, 800);
     } catch (err: any) {
-      setIsRedirecting(false); // Hide mask if it fails
+      setIsRedirecting(false);
       setError(
         err.response?.data?.detail ||
           err.message ||
@@ -66,8 +59,6 @@ export default function StepPublish() {
     }
   };
 
-  // ✅🚨 FULL-SCREEN REDIRECT MASK
-  // If the user successfully clicked publish, render this overlay instead of the form.
   if (isRedirecting) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">

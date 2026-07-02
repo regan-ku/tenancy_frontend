@@ -13,13 +13,24 @@ export default function AgencyReportsPage() {
   const [maintAnalytics, setMaintAnalytics] =
     useState<MaintenanceAnalytics | null>(null);
   const [statements, setStatements] = useState<LandlordStatement[]>([]);
+
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+  const [exportingExcel, setExportingExcel] = useState(false);
+
   const [activeTab, setActiveTab] = useState<
     "portfolio" | "operations" | "statements"
   >("portfolio");
 
   useEffect(() => {
-    const fetchData = async () => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
       const [m, ma, s] = await Promise.all([
         agencyIntelligenceApi.getPortfolioMetrics(),
         agencyIntelligenceApi.getMaintenanceAnalytics(),
@@ -28,12 +39,45 @@ export default function AgencyReportsPage() {
       setMetrics(m);
       setMaintAnalytics(ma);
       setStatements(s);
+    } catch (err: any) {
+      console.error("Failed to fetch reports data", err);
+      setError("Failed to load analytics data. Please try again.");
+    } finally {
       setLoading(false);
-    };
-    fetchData();
-  }, []);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      await agencyIntelligenceApi.exportPortfolioExcel();
+    } catch (err) {
+      console.error("Failed to export Excel", err);
+      alert("Failed to export data. Please try again.");
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  const handleDownloadPDF = async (statementId: string) => {
+    setDownloadingPdfId(statementId);
+    try {
+      await agencyIntelligenceApi.generateStatementPDF(statementId);
+    } catch (err) {
+      console.error("Failed to download PDF", err);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  };
 
   const formatCurrency = (amount: number) => `KES ${amount.toLocaleString()}`;
+
+  // ✅ FIX: Deduplicate statements by ID to prevent duplicate rows and React key warnings
+  const uniqueStatements = statements.filter(
+    (statement, index, self) =>
+      index === self.findIndex((t) => t.id === statement.id),
+  );
 
   // Calculate aggregates
   const totalUnits = metrics.reduce((acc, m) => acc + m.total_units, 0);
@@ -60,50 +104,77 @@ export default function AgencyReportsPage() {
             statements and track operational SLAs.
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90">
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-            />
-          </svg>
-          Export All Data (Excel)
+        <button
+          onClick={handleExportExcel}
+          disabled={exportingExcel}
+          className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90 disabled:opacity-50"
+        >
+          {exportingExcel ? (
+            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+          ) : (
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+          )}
+          {exportingExcel ? "Exporting..." : "Export All Data (Excel)"}
         </button>
       </div>
 
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex justify-between items-center">
+          <span>{error}</span>
+          <button
+            onClick={fetchData}
+            className="text-sm font-bold underline hover:text-red-900"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Aggregate KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard
-          title="Total Managed Units"
-          value={totalUnits}
-          icon="🚪"
-          color="bg-blue-50 text-blue-600"
-        />
-        <KPICard
-          title="Avg. Occupancy Rate"
-          value={`${avgOccupancy}%`}
-          icon="📈"
-          color="bg-green-50 text-green-600"
-        />
-        <KPICard
-          title="Total Rent Collected"
-          value={formatCurrency(totalCollected)}
-          icon="💰"
-          color="bg-purple-50 text-purple-600"
-        />
-        <KPICard
-          title="Total Portfolio Arrears"
-          value={formatCurrency(totalArrears)}
-          icon="⚠️"
-          color="bg-red-50 text-red-600"
-        />
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => <KPISkeleton key={i} />)
+        ) : (
+          <>
+            <KPICard
+              title="Total Managed Units"
+              value={totalUnits}
+              icon="🚪"
+              color="bg-blue-50 text-blue-600"
+            />
+            <KPICard
+              title="Avg. Occupancy Rate"
+              value={`${avgOccupancy}%`}
+              icon="📈"
+              color="bg-green-50 text-green-600"
+            />
+            <KPICard
+              title="Total Rent Collected"
+              value={formatCurrency(totalCollected)}
+              icon="💰"
+              color="bg-purple-50 text-purple-600"
+            />
+            <KPICard
+              title="Total Portfolio Arrears"
+              value={formatCurrency(totalArrears)}
+              icon="⚠️"
+              color="bg-red-50 text-red-600"
+            />
+          </>
+        )}
       </div>
 
       {/* Tabs */}
@@ -117,7 +188,11 @@ export default function AgencyReportsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key as any)}
-              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === tab.key ? "border-primary text-primary" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
+                activeTab === tab.key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
             >
               {tab.label}
             </button>
@@ -130,175 +205,224 @@ export default function AgencyReportsPage() {
         {/* PORTFOLIO TAB */}
         {activeTab === "portfolio" && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-4">Property & Landlord</th>
-                  <th className="px-6 py-4">Units & Occupancy</th>
-                  <th className="px-6 py-4">Rent Collected</th>
-                  <th className="px-6 py-4">Arrears</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {metrics.map((m, i) => (
-                  <tr key={i} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-slate-800">
-                        {m.property_name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Owner: {m.landlord_name}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-slate-800">
-                        {m.total_units} Units
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="w-16 bg-slate-200 rounded-full h-1.5">
-                          <div
-                            className="bg-green-500 h-1.5 rounded-full"
-                            style={{ width: `${m.occupancy_rate}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-xs font-bold text-green-600">
-                          {m.occupancy_rate}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 font-extrabold text-green-600">
-                      {formatCurrency(m.rent_collected)}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-red-600">
-                      {formatCurrency(m.arrears)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-xs text-primary hover:underline font-bold">
-                        View Ledger →
-                      </button>
-                    </td>
+            {loading ? (
+              <TableSkeleton rows={5} />
+            ) : metrics.length === 0 ? (
+              <EmptyState message="No properties found in your delegated portfolio." />
+            ) : (
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4">Property & Landlord</th>
+                    <th className="px-6 py-4">Units & Occupancy</th>
+                    <th className="px-6 py-4">Rent Collected</th>
+                    <th className="px-6 py-4">Arrears</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {metrics.map((m, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-slate-800">
+                          {m.property_name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Owner: {m.landlord_name}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-slate-800">
+                          {m.total_units} Units
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="w-16 bg-slate-200 rounded-full h-1.5">
+                            <div
+                              className="bg-green-500 h-1.5 rounded-full"
+                              style={{ width: `${m.occupancy_rate}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs font-bold text-green-600">
+                            {m.occupancy_rate}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-extrabold text-green-600">
+                        {formatCurrency(m.rent_collected)}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-red-600">
+                        {formatCurrency(m.arrears)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() =>
+                            console.log("View ledger for", m.property_name)
+                          }
+                          className="text-xs text-primary hover:underline font-bold"
+                        >
+                          View Ledger →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
         {/* OPERATIONS TAB */}
-        {activeTab === "operations" && maintAnalytics && (
+        {activeTab === "operations" && (
           <div className="p-8 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="p-5 bg-slate-50 rounded-xl border border-slate-100 text-center">
-                <p className="text-3xl font-extrabold text-primary-dark">
-                  {maintAnalytics.total_requests}
-                </p>
-                <p className="text-xs text-slate-500 font-bold uppercase mt-1">
-                  Total Requests
-                </p>
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-24 bg-slate-100 animate-pulse rounded-xl"
+                  ></div>
+                ))}
               </div>
-              <div className="p-5 bg-green-50 rounded-xl border border-green-100 text-center">
-                <p className="text-3xl font-extrabold text-green-700">
-                  {maintAnalytics.resolved_within_sla}
-                </p>
-                <p className="text-xs text-green-600 font-bold uppercase mt-1">
-                  Resolved On Time
-                </p>
-              </div>
-              <div className="p-5 bg-red-50 rounded-xl border border-red-100 text-center">
-                <p className="text-3xl font-extrabold text-red-700">
-                  {maintAnalytics.breached_sla}
-                </p>
-                <p className="text-xs text-red-600 font-bold uppercase mt-1">
-                  SLA Breaches
-                </p>
-              </div>
-              <div className="p-5 bg-blue-50 rounded-xl border border-blue-100 text-center">
-                <p className="text-3xl font-extrabold text-blue-700">
-                  {maintAnalytics.avg_resolution_time_hours}h
-                </p>
-                <p className="text-xs text-blue-600 font-bold uppercase mt-1">
-                  Avg Resolution
-                </p>
-              </div>
-            </div>
+            ) : maintAnalytics ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div className="p-5 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    <p className="text-3xl font-extrabold text-primary-dark">
+                      {maintAnalytics.total_requests}
+                    </p>
+                    <p className="text-xs text-slate-500 font-bold uppercase mt-1">
+                      Total Requests
+                    </p>
+                  </div>
+                  <div className="p-5 bg-green-50 rounded-xl border border-green-100 text-center">
+                    <p className="text-3xl font-extrabold text-green-700">
+                      {maintAnalytics.resolved_within_sla}
+                    </p>
+                    <p className="text-xs text-green-600 font-bold uppercase mt-1">
+                      Resolved On Time
+                    </p>
+                  </div>
+                  <div className="p-5 bg-red-50 rounded-xl border border-red-100 text-center">
+                    <p className="text-3xl font-extrabold text-red-700">
+                      {maintAnalytics.breached_sla}
+                    </p>
+                    <p className="text-xs text-red-600 font-bold uppercase mt-1">
+                      SLA Breaches
+                    </p>
+                  </div>
+                  <div className="p-5 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                    <p className="text-3xl font-extrabold text-blue-700">
+                      {maintAnalytics.avg_resolution_time_hours}h
+                    </p>
+                    <p className="text-xs text-blue-600 font-bold uppercase mt-1">
+                      Avg Resolution
+                    </p>
+                  </div>
+                </div>
 
-            <div className="p-6 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
-              <strong>Operational Insight:</strong> Your caretaker team is
-              resolving{" "}
-              {Math.round(
-                (maintAnalytics.resolved_within_sla /
-                  maintAnalytics.total_requests) *
-                  100,
-              )}
-              % of issues within the SLA. Consider dispatching additional field
-              staff to reduce the {maintAnalytics.breached_sla} breached
-              tickets.
-            </div>
+                {maintAnalytics.total_requests > 0 && (
+                  <div className="p-6 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+                    <strong>Operational Insight:</strong> Your caretaker team is
+                    resolving{" "}
+                    {Math.round(
+                      (maintAnalytics.resolved_within_sla /
+                        maintAnalytics.total_requests) *
+                        100,
+                    )}
+                    % of issues within the SLA.
+                    {maintAnalytics.breached_sla > 0 &&
+                      ` Consider dispatching additional field staff to reduce the ${maintAnalytics.breached_sla} breached tickets.`}
+                  </div>
+                )}
+              </>
+            ) : (
+              <EmptyState message="No maintenance data available." />
+            )}
           </div>
         )}
 
         {/* STATEMENTS TAB */}
         {activeTab === "statements" && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-4">Landlord</th>
-                  <th className="px-6 py-4">Period</th>
-                  <th className="px-6 py-4">Gross Rent</th>
-                  <th className="px-6 py-4">Agency Fee (10%)</th>
-                  <th className="px-6 py-4">Net Payout</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {statements.map((s) => (
-                  <tr
-                    key={s.id}
-                    className="hover:bg-slate-50 transition-colors"
-                  >
-                    <td className="px-6 py-4 font-bold text-slate-800">
-                      {s.landlord_name}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600">{s.period}</td>
-                    <td className="px-6 py-4 text-slate-700">
-                      {formatCurrency(s.gross_rent)}
-                    </td>
-                    <td className="px-6 py-4 text-red-600 font-medium">
-                      - {formatCurrency(s.agency_fee)}
-                    </td>
-                    <td className="px-6 py-4 font-extrabold text-green-600">
-                      {formatCurrency(s.net_payout)}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90 flex items-center gap-1 ml-auto">
-                        <svg
-                          className="w-3 h-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                          />
-                        </svg>
-                        Download PDF
-                      </button>
-                    </td>
+            {loading ? (
+              <TableSkeleton rows={3} />
+            ) : uniqueStatements.length === 0 ? (
+              <EmptyState message="No landlord statements generated for this period." />
+            ) : (
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4">Landlord</th>
+                    <th className="px-6 py-4">Period</th>
+                    <th className="px-6 py-4">Gross Rent</th>
+                    <th className="px-6 py-4">Agency Fee (10%)</th>
+                    <th className="px-6 py-4">Net Payout</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {/* ✅ FIXED: Using uniqueStatements instead of statements */}
+                  {uniqueStatements.map((s) => (
+                    <tr
+                      key={s.id}
+                      className="hover:bg-slate-50 transition-colors"
+                    >
+                      <td className="px-6 py-4 font-bold text-slate-800">
+                        {s.landlord_name}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">{s.period}</td>
+                      <td className="px-6 py-4 text-slate-700">
+                        {formatCurrency(s.gross_rent)}
+                      </td>
+                      <td className="px-6 py-4 text-red-600 font-medium">
+                        - {formatCurrency(s.agency_fee)}
+                      </td>
+                      <td className="px-6 py-4 font-extrabold text-green-600">
+                        {formatCurrency(s.net_payout)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => handleDownloadPDF(s.id)}
+                          disabled={downloadingPdfId === s.id}
+                          className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90 flex items-center gap-1 ml-auto disabled:opacity-50"
+                        >
+                          {downloadingPdfId === s.id ? (
+                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          ) : (
+                            <svg
+                              className="w-3 h-3"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                              />
+                            </svg>
+                          )}
+                          {downloadingPdfId === s.id
+                            ? "Generating..."
+                            : "Download PDF"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 }
+
+// ==========================================
+// SUB-COMPONENTS
+// ==========================================
 
 function KPICard({ title, value, icon, color }: any) {
   return (
@@ -314,6 +438,48 @@ function KPICard({ title, value, icon, color }: any) {
         {title}
       </p>
       <p className="text-xl font-extrabold text-primary-dark mt-1">{value}</p>
+    </div>
+  );
+}
+
+function KPISkeleton() {
+  return (
+    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 animate-pulse">
+      <div className="w-10 h-10 bg-slate-200 rounded-xl mb-3"></div>
+      <div className="h-3 bg-slate-200 rounded w-1/2 mb-2"></div>
+      <div className="h-6 bg-slate-200 rounded w-3/4"></div>
+    </div>
+  );
+}
+
+function TableSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="p-6 space-y-4 animate-pulse">
+      <div className="h-4 bg-slate-200 rounded w-full"></div>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-12 bg-slate-100 rounded w-full"></div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="p-12 text-center text-slate-400">
+      <svg
+        className="w-12 h-12 mx-auto mb-3 text-slate-300"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+        />
+      </svg>
+      <p className="font-medium">{message}</p>
     </div>
   );
 }
