@@ -41,7 +41,7 @@ export interface ActivityLogEntry {
 // API METHODS
 // ==========================================
 export const agencySettingsApi = {
-  // 1. Agency Profile (✅ REAL API)
+  // 1. Agency Profile
   getProfile: async (): Promise<AgencyProfile> => {
     try {
       const response = await apiClient.get(endpoints.AGENCIES.LIST);
@@ -101,7 +101,7 @@ export const agencySettingsApi = {
     }
   },
 
-  // 2. Payment Accounts (✅ REAL API)
+  // 2. Payment Accounts
   getPaymentAccounts: async (): Promise<AgencyPaymentAccount[]> => {
     try {
       const response = await apiClient.get(endpoints.PAYMENTS.ACCOUNTS);
@@ -120,40 +120,28 @@ export const agencySettingsApi = {
     return response.data;
   },
 
-  // ✅ NEW: Set a specific account as the default for rent routing
   setDefaultAccount: async (id: number): Promise<void> => {
     await apiClient.patch(endpoints.PAYMENTS.ACCOUNT_DETAIL(id), {
       is_default: true,
     });
   },
 
-  // ✅ NEW: Remove/Delete a payment account
   removePaymentAccount: async (id: number): Promise<void> => {
     await apiClient.delete(endpoints.PAYMENTS.ACCOUNT_DETAIL(id));
   },
 
-  // 3. Audit & Activity Log (Mocked until backend endpoint is ready)
+  // ✅ UPDATED: Removed mock data. Now fetches real logs from the backend.
   getActivityLogs: async (): Promise<ActivityLogEntry[]> => {
-    // TODO: Replace with real API call when backend endpoint is ready
-    return [
-      {
-        id: "L1",
-        staff_name: "Sarah Jenkins",
-        staff_role: "Property Manager",
-        action: "Approved Rental Application",
-        target_entity: "David Miller (Kilimani Hts, B-204)",
-        timestamp: "2026-06-18 14:32",
-        ip_address: "192.168.1.45",
-      },
-      {
-        id: "L2",
-        staff_name: "David Ochieng",
-        staff_role: "Field Agent",
-        action: "Scheduled Property Viewing",
-        target_entity: "Lavington Villas, V-02",
-        timestamp: "2026-06-18 11:15",
-        ip_address: "10.0.0.12",
-      },
-    ];
+    try {
+      // Calls the real backend endpoint for audit/activity logs
+      const response = await apiClient.get("/api/reports/activity-logs/");
+      const logsArray = Array.isArray(response.data)
+        ? response.data
+        : response.data.results || [];
+      return logsArray;
+    } catch (error) {
+      console.error("Failed to fetch activity logs:", error);
+      return [];
+    }
   },
 };
