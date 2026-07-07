@@ -14,7 +14,6 @@ export default function StepCompletion() {
     resetWizard,
   } = useOnboardingWizardStore();
 
-  // ✅ NEW: Tracks if the submission was successful to show the final screen
   const [isSuccess, setIsSuccess] = useState(false);
 
   const handleSubmit = async () => {
@@ -23,7 +22,6 @@ export default function StepCompletion() {
     try {
       const payload = new FormData();
 
-      // Append all text fields and files
       Object.entries(formData).forEach(([key, value]) => {
         if (value instanceof File) {
           payload.append(key, value);
@@ -34,16 +32,14 @@ export default function StepCompletion() {
         }
       });
 
-      // 1. Submit to backend
       await profileApi.completeOnboarding(payload);
 
-      // 2. Clear the wizard draft from localStorage
       resetWizard();
 
-      // 3. ✅ Trigger the Success / Pending Verification Screen
       setIsSuccess(true);
 
-      // 4. Redirect after a brief delay to show the success message
+      // ✅ FIX: Use window.location.href to force a full page reload
+      // This ensures the auth store is refreshed and the bootstrap process runs
       setTimeout(() => {
         if (userRole === "tenant") {
           window.location.href = "/dashboard/tenant";
@@ -62,8 +58,6 @@ export default function StepCompletion() {
     }
   };
 
-  // ✅ SUCCESS / PENDING VERIFICATION SCREEN
-  // This replaces the form once the API call succeeds
   if (isSuccess) {
     return (
       <div className="text-center py-12 space-y-6 animate-in fade-in zoom-in-95">
@@ -97,7 +91,6 @@ export default function StepCompletion() {
     );
   }
 
-  // ✅ REVIEW & SUBMIT SCREEN (Shown before they click submit)
   return (
     <div className="space-y-6">
       <div className="text-center mb-8">

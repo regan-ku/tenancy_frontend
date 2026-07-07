@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import { useOnboardingWizardStore } from "@/store/onboardingWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 
@@ -11,27 +11,27 @@ export default function StepPersonalOrBusinessInfo() {
   const isTenant = userRole === "tenant";
   const isAgency = userRole === "agency";
 
-  // ✅ NEW: Detect if user is Staff (Agent/Caretaker) or has pre-filled data
+  // ✅ Detect if user is Staff to show a badge (NO LOCKING)
   const isStaff = user?.role === "agent" || user?.role === "caretaker";
-  const isNameLocked = isStaff || !!formData.full_name;
-  const isPhoneLocked =
-    isStaff || (!!formData.phone_number && formData.phone_number !== "+254");
-
-  useEffect(() => {
-    if (user) {
-      const updates: Partial<typeof formData> = {};
-      const userPhone = (user as any).phone_number || (user as any).phone;
-      if (userPhone && formData.phone_number === "+254")
-        updates.phone_number = userPhone;
-      if (Object.keys(updates).length > 0) updateFormData(updates);
-    }
-  }, [user]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = e.target;
     updateFormData({ [name]: value });
+  };
+
+  // ✅ Helper to render a "Pre-filled" badge
+  const renderPrefilledBadge = (fieldName: string) => {
+    const value = (formData as any)[fieldName];
+    if (value && value !== "+254") {
+      return (
+        <span className="ml-2 text-[10px] font-normal text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+          Pre-filled
+        </span>
+      );
+    }
+    return null;
   };
 
   return (
@@ -44,12 +44,11 @@ export default function StepPersonalOrBusinessInfo() {
           {isAgency
             ? "Provide your registered business details."
             : isStaff
-              ? "Your core identity details are locked. Please complete the remaining legal tenant fields."
+              ? "Your core identity details are managed by your agency. Please complete the remaining legal tenant fields."
               : "Provide your personal details. Phone number is auto-filled."}
         </p>
       </div>
 
-      {/* ✅ NEW: Info banner for Staff members */}
       {isStaff && !isAgency && (
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-center gap-2">
           <svg
@@ -66,7 +65,7 @@ export default function StepPersonalOrBusinessInfo() {
             ></path>
           </svg>
           As a staff member, your Name and Phone Number are managed by your
-          agency. Please fill in the rest of your tenant profile to proceed.
+          agency.
         </div>
       )}
 
@@ -83,11 +82,8 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.business_name}
                 onChange={handleChange}
                 required
-                pattern="^[a-zA-Z\s\-']{2,60}$"
-                title="Letters, spaces, and hyphens only (2-60 chars)"
-                maxLength={60}
-                placeholder="e.g., Sunrise Properties Ltd"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                placeholder="e.g., Sunrise Properties Ltd"
               />
             </div>
             <div>
@@ -100,11 +96,8 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.registration_number}
                 onChange={handleChange}
                 required
-                pattern="^[A-Za-z0-9\-]{5,30}$"
-                title="5-30 alphanumeric characters"
-                maxLength={30}
-                placeholder="e.g., PVT-XXXXXX"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                placeholder="e.g., PVT-XXXXXX"
               />
             </div>
             <div>
@@ -117,22 +110,17 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.business_email}
                 onChange={handleChange}
                 required
-                placeholder="e.g., info@sunrise.co.ke"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                placeholder="e.g., info@sunrise.co.ke"
               />
             </div>
           </>
         ) : (
           <>
-            {/* ✅ UPDATED: Full Name with Locking Logic */}
+            {/* Full Name Field - NO LOCKING */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Full Legal Name *
-                {isNameLocked && (
-                  <span className="text-xs text-slate-400 font-normal ml-2">
-                    (Locked)
-                  </span>
-                )}
+                Full Legal Name *{renderPrefilledBadge("full_name")}
               </label>
               <input
                 type="text"
@@ -140,12 +128,8 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.full_name}
                 onChange={handleChange}
                 required
-                readOnly={isNameLocked}
-                pattern="^[a-zA-Z\s\-']{2,60}$"
-                title="Letters, spaces, and hyphens only (2-60 chars)"
-                maxLength={60}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                 placeholder="e.g., John Doe"
-                className={`w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none ${isNameLocked ? "bg-slate-100 cursor-not-allowed text-slate-600" : ""}`}
               />
             </div>
 
@@ -164,13 +148,10 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.id_number}
                 onChange={handleChange}
                 required={!isTenant}
-                pattern="^[A-Za-z0-9]{6,20}$"
-                title="6-20 alphanumeric characters"
-                maxLength={20}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                 placeholder={
                   isTenant ? "Optional for tenants" : "e.g., 12345678"
                 }
-                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
 
@@ -184,14 +165,13 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.date_of_birth}
                 onChange={handleChange}
                 required
-                max={new Date().toISOString().split("T")[0]}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Nationality *
+                Nationality *{renderPrefilledBadge("nationality")}
               </label>
               <input
                 type="text"
@@ -199,25 +179,18 @@ export default function StepPersonalOrBusinessInfo() {
                 value={formData.nationality}
                 onChange={handleChange}
                 required
-                pattern="^[a-zA-Z\s\-']{2,60}$"
-                title="Letters only"
-                maxLength={60}
-                placeholder="e.g., Kenyan"
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
+                placeholder="e.g., Kenyan"
               />
             </div>
           </>
         )}
 
-        {/* ✅ UPDATED: Phone Number with Locking Logic */}
+        {/* Phone Number Field - NO LOCKING */}
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">
             {isAgency ? "Business Phone Number" : "Personal Phone Number"} *
-            {isPhoneLocked && (
-              <span className="text-xs text-slate-400 font-normal ml-2">
-                (Locked)
-              </span>
-            )}
+            {renderPrefilledBadge("phone_number")}
           </label>
           <input
             type="tel"
@@ -225,12 +198,8 @@ export default function StepPersonalOrBusinessInfo() {
             value={formData.phone_number}
             onChange={handleChange}
             required
-            readOnly={isPhoneLocked}
-            pattern="^(\+254|254|0)[17]\d{8}$"
-            title="Format: +254712345678 or 0712345678"
-            maxLength={15}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
             placeholder="e.g., +254712345678"
-            className={`w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none ${isPhoneLocked ? "bg-slate-100 cursor-not-allowed text-slate-600" : "bg-slate-50"}`}
           />
           <p className="text-xs text-slate-500 mt-1">
             Must be exactly 10 digits (starting with 0) or 13 characters
@@ -240,7 +209,7 @@ export default function StepPersonalOrBusinessInfo() {
 
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">
-            Physical Address *
+            Physical Address *{renderPrefilledBadge("address")}
           </label>
           <textarea
             name="address"
@@ -248,13 +217,12 @@ export default function StepPersonalOrBusinessInfo() {
             onChange={handleChange}
             required
             rows={3}
-            minLength={5}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none resize-none"
             placeholder={
               isAgency
                 ? "Registered business address..."
                 : "Your current residential address..."
             }
-            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none resize-none"
           />
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useOnboardingWizardStore } from "@/store/onboardingWizard.store";
 import { useAuthStore } from "@/store/auth.store";
@@ -13,7 +13,6 @@ import StepContactsOrDirectors from "@/modules/onboarding/wizard/steps/StepConta
 import StepVerification from "@/modules/onboarding/wizard/steps/StepVerification";
 import StepCompletion from "@/modules/onboarding/wizard/steps/StepCompletion";
 
-// ✅ STRICT VALIDATION HELPERS
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 const isValidPhone = (phone: string) => /^(\+254|254|0)[17]\d{8}$/.test(phone);
@@ -47,39 +46,50 @@ export default function OnboardingPage() {
     "Redirecting you to your dashboard...",
   );
 
+  // ✅ CRITICAL FIX: Use a ref to guarantee the profile fetch ONLY runs once.
+  const hasFetchedProfile = useRef(false);
+
   useEffect(() => {
     setHasMounted(true);
   }, []);
 
-  // ✅ SYNC USER ID: Locks the draft to the currently logged-in user
   useEffect(() => {
-    if (user?.id && String(user.id) !== userId) {
-      setUserId(String(user.id));
-    }
+    if (user?.id && String(user.id) !== userId) setUserId(String(user.id));
   }, [user, userId, setUserId]);
 
-  // ✅🚨 CRITICAL FIX: AUTO-POPULATE & ROLE RESOLUTION
-  // We MUST always fetch the profile to ensure the userRole is set correctly,
-  // even if the user already has a phone number.
+  // ✅🚨 BULLETPROOF AUTO-POPULATE: RUNS EXACTLY ONCE ON MOUNT
   useEffect(() => {
-    if (!hasMounted || !isAuthenticated || isSuccess) return;
+    if (
+      !hasMounted ||
+      !isAuthenticated ||
+      isSuccess ||
+      hasFetchedProfile.current
+    )
+      return;
 
-    // 1. Immediately set role from auth store if available
-    const authRole = (user as any)?.role;
+    // Mark as fetched immediately to prevent double-firing in React StrictMode
+    hasFetchedProfile.current = true;
+
+    // 1. Set role from auth store immediately
+    const currentUser = useAuthStore.getState().user;
+    const authRole = (currentUser as any)?.role;
     if (authRole && !userRole) {
       setUserRole(authRole);
     }
 
     // 2. Update phone number from auth store if it's still the default
-    const authPhone = (user as any)?.phone_number || (user as any)?.phone;
+    const authPhone =
+      (currentUser as any)?.phone_number || (currentUser as any)?.phone;
+    const currentFormData = useOnboardingWizardStore.getState().formData;
+
     if (
       authPhone &&
-      (formData.phone_number === "+254" || !formData.phone_number)
+      (currentFormData.phone_number === "+254" || !currentFormData.phone_number)
     ) {
       updateFormData({ phone_number: authPhone });
     }
 
-    // 3. ALWAYS fetch profile from backend to guarantee we have the correct role and phone
+    // 3. Fetch profile from backend
     apiClient
       .get(endpoints.PROFILE.ME)
       .then((res) => {
@@ -87,54 +97,60 @@ export default function OnboardingPage() {
         const backendPhone = profile?.phone_number || profile?.phone;
         const backendRole = profile?.role;
 
+        // ✅ SAFELY update form data ONLY if fields are empty using getState()
+        // This guarantees we NEVER overwrite data the user is actively typing
+        const latestFormData = useOnboardingWizardStore.getState().formData;
+        const latestUserRole = useOnboardingWizardStore.getState().userRole;
+
         if (
           backendPhone &&
-          (formData.phone_number === "+254" || !formData.phone_number)
+          (latestFormData.phone_number === "+254" ||
+            !latestFormData.phone_number)
         ) {
           updateFormData({ phone_number: backendPhone });
         }
 
-        // ✅ CRITICAL: Always set the role from the backend if the store doesn't have it
-        if (backendRole && !userRole) {
+        if (backendRole && !latestUserRole) {
           setUserRole(backendRole as any);
         }
       })
       .catch((err) => console.warn("Profile fetch failed:", err));
-  }, [hasMounted, isAuthenticated, user, userRole, isSuccess]);
+  }, [
+    hasMounted,
+    isAuthenticated,
+    isSuccess,
+    setUserRole,
+    updateFormData,
+    userRole,
+  ]);
 
   const totalSteps = userRole === "tenant" ? 3 : 4;
   const progress = (currentStep / totalSteps) * 100;
 
-  // ✅ STRICT VALIDATION GATEKEEPER
   const validateCurrentStep = (): boolean => {
     setError(null);
 
     if (currentStep === 1) {
       if (userRole === "agency") {
         if (!isValidName(formData.business_name)) {
-          setError("⚠️ Invalid business name. Use letters and spaces only.");
+          setError("⚠️ Invalid business name.");
           return false;
         }
         if (!isValidRegNumber(formData.registration_number)) {
-          setError(
-            "⚠️ Invalid registration number. Use 5-30 alphanumeric characters.",
-          );
+          setError("⚠️ Invalid registration number.");
           return false;
         }
         if (!isValidEmail(formData.business_email)) {
-          setError("⚠️ Please provide a valid business email address.");
+          setError("⚠️ Invalid business email.");
           return false;
         }
       } else {
         if (!isValidName(formData.full_name)) {
-          setError("⚠️ Invalid full name. Use letters and spaces only.");
+          setError("⚠️ Invalid full name.");
           return false;
         }
-        const isTenant = userRole === "tenant";
-        if (!isTenant && !isValidID(formData.id_number)) {
-          setError(
-            "⚠️ Invalid ID/Passport. Must be 6-20 alphanumeric characters.",
-          );
+        if (userRole !== "tenant" && !isValidID(formData.id_number)) {
+          setError("⚠️ Invalid ID/Passport.");
           return false;
         }
         if (!formData.date_of_birth) {
@@ -142,21 +158,16 @@ export default function OnboardingPage() {
           return false;
         }
         if (!isValidName(formData.nationality)) {
-          setError("⚠️ Invalid nationality. Use letters only.");
+          setError("⚠️ Invalid nationality.");
           return false;
         }
       }
-
       if (!isValidPhone(formData.phone_number)) {
-        setError(
-          "⚠️ Invalid phone number. Use format: +254712345678 or 0712345678.",
-        );
+        setError("⚠️ Invalid phone number.");
         return false;
       }
       if (!formData.address || formData.address.length < 5) {
-        setError(
-          "⚠️ Please provide a valid physical address (min 5 characters).",
-        );
+        setError("⚠️ Please provide a valid physical address.");
         return false;
       }
     }
@@ -164,7 +175,7 @@ export default function OnboardingPage() {
     if (currentStep === 2) {
       if (userRole === "agency") {
         if (formData.directors.length === 0) {
-          setError("⚠️ An agency must have at least one director added.");
+          setError("⚠️ An agency must have at least one director.");
           return false;
         }
         for (const d of formData.directors) {
@@ -194,7 +205,7 @@ export default function OnboardingPage() {
         }
       } else {
         if (!isValidName(formData.next_of_kin_name)) {
-          setError("⚠️ Invalid Next of Kin name. Use letters and spaces only.");
+          setError("⚠️ Invalid Next of Kin name.");
           return false;
         }
         if (!formData.next_of_kin_relationship) {
@@ -202,15 +213,12 @@ export default function OnboardingPage() {
           return false;
         }
         if (!isValidPhone(formData.next_of_kin_phone)) {
-          setError(
-            "⚠️ Invalid Next of Kin phone. Use format: +254712345678 or 0712345678.",
-          );
+          setError("⚠️ Invalid Next of Kin phone.");
           return false;
         }
       }
     }
 
-    // ✅ STRICT VALIDATION FOR VERIFICATION DOCUMENTS (STEP 3)
     if (currentStep === 3 && userRole !== "tenant") {
       if (!formData.kra_pin || formData.kra_pin.length !== 11) {
         setError("⚠️ Please enter a valid 11-character KRA PIN.");
@@ -218,7 +226,7 @@ export default function OnboardingPage() {
       }
       if (userRole === "landlord") {
         if (!formData.id_document_front || !formData.id_document_back) {
-          setError("⚠️ Please upload both front and back of your National ID.");
+          setError("⚠️ Please upload both sides of your National ID.");
           return false;
         }
         if (!formData.kra_tax_compliance_cert) {
@@ -241,7 +249,6 @@ export default function OnboardingPage() {
         }
       }
     }
-
     return true;
   };
 
@@ -267,16 +274,12 @@ export default function OnboardingPage() {
       });
 
       await profileApi.completeOnboarding(payload);
-
       setIsSuccess(true);
 
       setTimeout(async () => {
         const userState = await fetchUserState();
         if (userState?.next_route) {
-          setRedirectMessage(
-            userState.message || "Redirecting you to your dashboard...",
-          );
-
+          setRedirectMessage(userState.message || "Redirecting...");
           setTimeout(() => {
             resetWizard();
             router.push(userState.next_route);

@@ -1,13 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
 import { usePropertyWizardStore } from "@/store/propertyWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import { propertiesApi } from "@/api/properties.api";
 
 export default function StepPublish() {
-  const router = useRouter();
   const { formData, propertyId, isSubmitting, setSubmitting, resetWizard } =
     usePropertyWizardStore();
   const { user } = useAuthStore();
@@ -41,12 +39,16 @@ export default function StepPublish() {
       // 3. Reset the Zustand store
       resetWizard();
 
-      // 4. Navigate to the appropriate dashboard
+      // 4. ✅ FIXED: Use window.location.href instead of router.push()
+      // This forces a hard page reload which:
+      // - Clears the stale wizard state from memory
+      // - Triggers a fresh bootstrap process
+      // - Re-fetches user state from backend
+      // - Ensures middleware sees the correct "property created" status
       setTimeout(() => {
-        // ✅ FIXED: Dynamically route based on user role
         const userRole = user?.role || "landlord";
-        router.push(`/dashboard/${userRole}`);
-      }, 800);
+        window.location.href = `/dashboard/${userRole}`;
+      }, 1500); // Show success screen for 1.5 seconds before redirecting
     } catch (err: any) {
       setIsRedirecting(false);
       setError(
@@ -54,7 +56,6 @@ export default function StepPublish() {
           err.message ||
           "Failed to publish property. Please try again.",
       );
-    } finally {
       setSubmitting(false);
     }
   };
@@ -62,7 +63,21 @@ export default function StepPublish() {
   if (isRedirecting) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-secondary mb-6"></div>
+        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+          <svg
+            className="w-10 h-10 text-green-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M5 13l4 4L19 7"
+            ></path>
+          </svg>
+        </div>
         <h2 className="text-2xl font-bold text-primary-dark">
           🎉 Property Created Successfully!
         </h2>

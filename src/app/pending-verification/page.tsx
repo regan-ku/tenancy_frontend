@@ -15,7 +15,6 @@ export default function PendingVerificationPage() {
   const [isChecking, setIsChecking] = useState(false);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
 
-  // ✅ FIX: Use a ref to store the interval ID so we can clear it from anywhere
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -34,21 +33,25 @@ export default function PendingVerificationPage() {
           setMessage(state.message);
         }
 
-        // ✅ AUTO-REDIRECT: If admin approved them, the backend returns a different route!
+        // ✅ AUTO-REDIRECT: If admin approved them
         if (state?.next_route && state.next_route !== "/pending-verification") {
           setMessage(
             state.message || "Account verified! Redirecting you now...",
           );
 
-          // ✅🚨 CRITICAL FIX: CLEAR THE INTERVAL IMMEDIATELY!
-          // If we don't do this, the interval keeps running in the background.
-          // If the next_route is a 404 (like /properties/wizard before we build it),
-          // Next.js fails silently, and the interval keeps firing, updating the timer!
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
           }
 
-          router.push(state.next_route);
+          // ✅🚨 CRITICAL FIX: Use window.location.href instead of router.push()
+          // This forces a full page reload, which:
+          // 1. Clears the stale auth store state
+          // 2. Triggers the bootstrap process
+          // 3. Re-fetches the user state from the backend
+          // 4. Ensures the middleware sees the correct "verified" status
+          setTimeout(() => {
+            window.location.href = state.next_route;
+          }, 1500); // Small delay to show the success message
           return;
         }
 
@@ -64,10 +67,8 @@ export default function PendingVerificationPage() {
 
     checkStatus();
 
-    // Start polling every 5 seconds
     intervalRef.current = setInterval(checkStatus, 5000);
 
-    // Cleanup on unmount
     return () => {
       isMounted = false;
       if (intervalRef.current) {
