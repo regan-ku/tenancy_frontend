@@ -1,52 +1,46 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { staffApi, Caretaker } from "@/api/staff.api";
-import CreateCaretakerModal from "@/components/landlord/CreateCaretakerModal";
+import { landlordStaffApi, LandlordStaffMember } from "@/api/LandlordStaff.api";;
+
+// ✅ Modal Imports (We will build these in the next step)
+import AddCaretakerModal from "@/components/landlord/AddCaretakerModal";
+import AssignCaretakerModal from "@/components/landlord/AssignCaretakerModal";
+import RevokeCaretakerModal from "@/components/landlord/RevokeCaretakerModal";
+import ManageCaretakerAccessModal from "@/components/landlord/ManageCaretakerAccesModal";
 
 export default function LandlordStaffPage() {
-  const [caretakers, setCaretakers] = useState<Caretaker[]>([]);
+  const [staff, setStaff] = useState<LandlordStaffMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Modal States
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [assigningCaretaker, setAssigningCaretaker] =
+    useState<LandlordStaffMember | null>(null);
+  const [revokingCaretaker, setRevokingCaretaker] =
+    useState<LandlordStaffMember | null>(null);
+  const [managingCaretaker, setManagingCaretaker] =
+    useState<LandlordStaffMember | null>(null);
+
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
 
   useEffect(() => {
-    staffApi.getCaretakers().then((data) => {
-      setCaretakers(data);
-      setLoading(false);
-    });
+    fetchCaretakers();
   }, []);
 
-  const handleRevoke = async (id: number, name: string) => {
-    if (
-      confirm(
-        `Are you sure you want to revoke access for ${name}? They will be immediately logged out.`,
-      )
-    ) {
-      await staffApi.revokeAccess(id);
-      setCaretakers(caretakers.filter((c) => c.id !== id));
+  const fetchCaretakers = async () => {
+    setLoading(true);
+    try {
+      const data = await landlordStaffApi.getStaff();
+      setStaff(data);
+    } catch (error) {
+      console.error("Failed to fetch caretakers", error);
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const getPermissionBadges = (perms: Caretaker["permissions"]) => {
-    const badges = [];
-    if (perms.can_manage_maintenance)
-      badges.push({ label: "Maintenance", color: "bg-blue-100 text-blue-700" });
-    if (perms.can_conduct_inspections)
-      badges.push({
-        label: "Inspections",
-        color: "bg-purple-100 text-purple-700",
-      });
-    if (perms.can_view_tenant_contacts)
-      badges.push({
-        label: "Tenant Contacts",
-        color: "bg-green-100 text-green-700",
-      });
-    if (perms.can_track_utilities)
-      badges.push({
-        label: "Utilities",
-        color: "bg-yellow-100 text-yellow-700",
-      });
-    return badges;
   };
 
   return (
@@ -55,15 +49,14 @@ export default function LandlordStaffPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary-dark">
-            Staff & Caretakers
+            Property Caretakers
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Manage field personnel, assign properties, and control operational
-            access.
+            Assign and manage field caretakers for your properties.
           </p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => setShowAddModal(true)}
           className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90"
         >
           <svg
@@ -100,26 +93,27 @@ export default function LandlordStaffPage() {
         </svg>
         <div>
           <p className="text-sm font-bold text-blue-800">
-            Sub-User Architecture
+            Landlord Staff Permissions
           </p>
           <p className="text-xs text-blue-700 mt-0.5">
-            Caretakers do not register themselves. You create their credentials
-            here and provide them with their email/phone and password to log in.
-            Their access is strictly limited to the permissions you define
-            below.
+            As a landlord, you can only assign <strong>Caretakers</strong> to
+            handle physical property maintenance, inspections, and tenant
+            support. For broader operational roles (Agents/Managers), you must
+            delegate property management to an Agency.
           </p>
         </div>
       </div>
 
-      {/* Staff Directory Table */}
+      {/* Caretakers Table */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 uppercase text-xs font-bold border-b border-slate-100">
               <tr>
                 <th className="px-6 py-4">Caretaker Details</th>
-                <th className="px-6 py-4">Access Level & Permissions</th>
-                <th className="px-6 py-4">Status & Activity</th>
+                <th className="px-6 py-4">Contact Info</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Joined</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
             </thead>
@@ -127,16 +121,16 @@ export default function LandlordStaffPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     className="px-6 py-12 text-center text-slate-400"
                   >
-                    Loading staff directory...
+                    Loading caretakers...
                   </td>
                 </tr>
-              ) : caretakers.length === 0 ? (
+              ) : staff.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={5}
                     className="px-6 py-12 text-center text-slate-400"
                   >
                     No caretakers added yet. Click "Add Caretaker" to get
@@ -144,63 +138,60 @@ export default function LandlordStaffPage() {
                   </td>
                 </tr>
               ) : (
-                caretakers.map((staff) => (
+                staff.map((member) => (
                   <tr
-                    key={staff.id}
+                    key={member.id}
                     className="hover:bg-slate-50 transition-colors"
                   >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center">
-                          {staff.full_name.charAt(0)}
+                        <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 font-bold flex items-center justify-center text-lg">
+                          🛠️
                         </div>
                         <div>
                           <p className="font-bold text-slate-800">
-                            {staff.full_name}
+                            {member.full_name}
                           </p>
-                          <p className="text-xs text-slate-500">
-                            {staff.email}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {staff.phone}
-                          </p>
+                          <span className="inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-green-100 text-green-700">
+                            Caretaker
+                          </span>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {getPermissionBadges(staff.permissions).map(
-                          (badge, i) => (
-                            <span
-                              key={i}
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${badge.color}`}
-                            >
-                              {badge.label}
-                            </span>
-                          ),
-                        )}
-                      </div>
+                      <p className="text-xs text-slate-600">{member.email}</p>
+                      <p className="text-xs text-slate-400">
+                        {member.phone_number}
+                      </p>
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${staff.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                        className={`px-2.5 py-1 rounded-full text-xs font-bold ${member.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
                       >
-                        {staff.is_active ? "Active" : "Revoked"}
+                        {member.is_active ? "Active" : "Revoked"}
                       </span>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Last login: {staff.last_login || "Never"}
-                      </p>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-500">
+                      {member.date_joined}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button className="text-xs text-primary hover:underline font-bold">
-                          Edit Access
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => setManagingCaretaker(member)}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline"
+                        >
+                          Manage Access
                         </button>
                         <button
-                          onClick={() =>
-                            handleRevoke(staff.id, staff.full_name)
-                          }
-                          className="text-xs text-red-500 hover:text-red-700 font-bold"
+                          onClick={() => setAssigningCaretaker(member)}
+                          className="text-xs text-primary hover:underline font-bold"
+                        >
+                          Assign Properties
+                        </button>
+                        <button
+                          onClick={() => setRevokingCaretaker(member)}
+                          disabled={!member.is_active}
+                          className="text-xs text-red-500 hover:text-red-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Revoke
                         </button>
@@ -214,12 +205,91 @@ export default function LandlordStaffPage() {
         </div>
       </div>
 
-      {/* Creation Modal */}
-      <CreateCaretakerModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={() => staffApi.getCaretakers().then(setCaretakers)}
-      />
+      {/* Modals Rendering */}
+      {showAddModal && (
+        <AddCaretakerModal
+          onClose={() => setShowAddModal(false)}
+          onSuccess={(creds) => {
+            setCreatedCredentials(creds);
+            setShowAddModal(false);
+            fetchCaretakers();
+          }}
+        />
+      )}
+
+      {createdCredentials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden text-center p-8">
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+              ✅
+            </div>
+            <h2 className="text-xl font-bold text-primary-dark mb-2">
+              Caretaker Account Created!
+            </h2>
+            <p className="text-sm text-slate-500 mb-6">
+              Share these temporary credentials with your caretaker.
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-left space-y-3 mb-6">
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Email
+                </p>
+                <p className="text-sm font-bold text-slate-800 break-all">
+                  {createdCredentials.email}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Temporary Password
+                </p>
+                <p className="text-sm font-mono font-bold text-primary break-all bg-primary/5 p-2 rounded border border-primary/20">
+                  {createdCredentials.password}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setCreatedCredentials(null)}
+              className="w-full px-8 py-2.5 bg-primary text-white font-bold rounded-lg shadow-md hover:bg-primary/90"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {assigningCaretaker && (
+        <AssignCaretakerModal
+          caretaker={assigningCaretaker}
+          onClose={() => setAssigningCaretaker(null)}
+          onSave={() => {
+            setAssigningCaretaker(null);
+            fetchCaretakers();
+          }}
+        />
+      )}
+
+      {revokingCaretaker && (
+        <RevokeCaretakerModal
+          caretaker={revokingCaretaker}
+          onClose={() => setRevokingCaretaker(null)}
+          onSuccess={() => {
+            setRevokingCaretaker(null);
+            fetchCaretakers();
+          }}
+        />
+      )}
+
+      {managingCaretaker && (
+        <ManageCaretakerAccessModal
+          caretaker={managingCaretaker}
+          onClose={() => setManagingCaretaker(null)}
+          onRevoke={() => {
+            setManagingCaretaker(null);
+            setRevokingCaretaker(managingCaretaker);
+          }}
+          onAssignmentChange={fetchCaretakers}
+        />
+      )}
     </div>
   );
 }

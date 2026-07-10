@@ -9,12 +9,13 @@ import { tenanciesApi } from "@/api/tenancies.api";
 import {
   landlordOperationsApi,
   LandlordApplication,
-} from "@/api/landlordOperations.api"; // ✅ Fixed import path
+} from "@/api/landlordOperations.api";
 
-import TerminateTenancyModal from "@/components/agency/TerminateTennacyModal";
-import TransferTenantModal from "@/components/agency/TransferTenantModal";
-import ExtendTenancyModal from "@/components/agency/ExtendTenancyModal";
-import TenantNotesModal from "@/components/agency/TenantNotesModal";
+// ✅ UPDATED IMPORTS: Points to Landlord-specific modals
+import TerminateTenancyModal from "@/components/landlord/TerminateTennacyModal";
+import TransferTenantModal from "@/components/landlord/TransferTenancyModal";
+import ExtendTenancyModal from "@/components/landlord/extendTenantModal";
+import TenantNotesModal from "@/components/landlord/TenantNotesModal";
 import ApplicationEditModal from "@/components/applications/ApplicationEditModal";
 
 interface TenantsFinancialsTabProps {
