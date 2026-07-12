@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation"; // ✅ ADDED useSearchParams
+import { useRouter, useSearchParams } from "next/navigation";
 import { useApplicationWizardStore } from "@/store/applicationWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import { applicationsApi, TenantHistorySummary } from "@/api/applications.api";
@@ -16,8 +16,8 @@ const formatCurrency = (value: any): string => {
 
 export default function StepTermsAndSubmit() {
   const router = useRouter();
-  const searchParams = useSearchParams(); // ✅ ADDED
-  const isManagerMode = searchParams.get("mode") === "manager"; // ✅ ADDED
+  const searchParams = useSearchParams();
+  const isManagerMode = searchParams.get("mode") === "manager";
 
   const { user } = useAuthStore();
   const {
@@ -29,7 +29,8 @@ export default function StepTermsAndSubmit() {
     setSubmitting,
     isSubmitting,
     error,
-    resetWizard,
+    // ✅ FIX: Removed `resetWizard` from destructuring.
+    // We no longer want to mutate the global UI state while this component is visible.
     setWizardLocked,
   } = useApplicationWizardStore();
 
@@ -58,9 +59,6 @@ export default function StepTermsAndSubmit() {
         }
       }
 
-      // ✅ UPDATED: Determine who to fetch history for
-      // In Manager Mode, the applicant is the new tenant (formData.applicant).
-      // In Standard Mode, the applicant is the logged-in user (user.id).
       const applicantId = isManagerMode ? formData.applicant : user?.id;
 
       if (applicantId) {
@@ -110,8 +108,7 @@ export default function StepTermsAndSubmit() {
       setIsSuccess(true);
       setWizardLocked(false);
 
-      // 3. Fetch the next route BEFORE resetting the wizard
-      // ✅ UPDATED: Managers go to dashboard, Tenants go to marketplace/status
+      // 3. Fetch the next route
       let nextRoute = isManagerMode ? "/dashboard/landlord" : "/marketplace";
 
       try {
@@ -126,11 +123,17 @@ export default function StepTermsAndSubmit() {
         );
       }
 
-      // 4. Clear the wizard state
-      resetWizard();
+      // 4. ✅ FIX: Clear the persisted localStorage draft directly.
+      // This ensures the wizard is fresh for the next session without
+      // triggering a UI re-render that flashes Step 1.
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("tennacy-application-wizard-draft");
+      }
 
-      // 5. Force hard navigation
-      window.location.href = nextRoute;
+      // 5. Force hard navigation after a short delay so the user can read the success message
+      setTimeout(() => {
+        window.location.href = nextRoute;
+      }, 2000);
     } catch (err: any) {
       console.error("❌ Application submission failed:", err);
 
@@ -242,7 +245,6 @@ export default function StepTermsAndSubmit() {
                 d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"
               />
             </svg>
-            {/* ✅ UPDATED: Dynamic Title */}
             {isManagerMode
               ? "Tenant's Tenancy History"
               : "Your Tenancy History"}{" "}

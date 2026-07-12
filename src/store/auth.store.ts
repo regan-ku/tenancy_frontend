@@ -51,9 +51,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
       }
 
-      // ✅ FIX: Ensure profile_complete is mapped if returned in login payload
+      // ✅ FIX: Ensure all core fields (including phone_number) are mapped
       const safeUser = {
         ...user,
+        email: user?.email || user?.contact_email,
+        full_name: user?.full_name || user?.name,
+        phone_number: user?.phone_number || user?.profile?.phone_number,
         profile_complete:
           user?.profile_complete ?? user?.profile?.profile_complete ?? false,
       };
@@ -65,10 +68,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ userState: stateData });
 
       // ✅ CRITICAL FIX: Sync profile_complete from userState into the user object
-      // This ensures all frontend guards instantly know the user's true status
       if (stateData && typeof stateData.profile_complete === "boolean") {
         set({
-          user: { ...safeUser, profile_complete: stateData.profile_complete },
+          user: {
+            ...safeUser,
+            profile_complete: stateData.profile_complete,
+            // ✅ REMOVED tenant_profile_complete from here to satisfy the User interface
+          },
         });
       }
 
@@ -118,14 +124,18 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         // 🚨 BULLETPROOF MERGER:
         const userData = {
           ...rawData,
-          ...(rawData.user ? rawData.user : {}), // Flatten if nested under 'user' key
+          ...(rawData.user ? rawData.user : {}),
 
-          // Map alternative field names to standard expected fields
           email: rawData.email || rawData.user?.email || rawData.contact_email,
           full_name:
             rawData.full_name || rawData.user?.full_name || rawData.name,
           role: rawData.role || rawData.user?.role,
-          // ✅ FIX: Explicitly map profile_complete from the profile endpoint
+
+          phone_number:
+            rawData.phone_number ||
+            rawData.user?.phone_number ||
+            rawData.profile?.phone_number,
+
           profile_complete:
             rawData.profile_complete ?? rawData.user?.profile_complete ?? false,
         };
@@ -134,7 +144,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       } catch (error) {
         console.error("Failed to fetch user profile on refresh", error);
         set({ isLoading: false });
-        get().logout(); // Token is invalid/expired
+        get().logout();
         return null;
       }
     }
@@ -153,6 +163,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           user: {
             ...get().user!,
             profile_complete: stateData.profile_complete,
+            // ✅ REMOVED tenant_profile_complete from here to satisfy the User interface
           },
         });
       }

@@ -12,7 +12,7 @@ export default function ApplicationWizardGuard({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading, userState, fetchUserState } =
+  const { isAuthenticated, isLoading, userState, user, fetchUserState } =
     useAuthStore();
 
   // ✅ FIX: Prevent Hydration Mismatch
@@ -38,7 +38,9 @@ export default function ApplicationWizardGuard({
       }
 
       let currentState = userState;
-      if (!currentState || currentState.profile_complete === undefined) {
+
+      // ✅ FIX: If state is missing or doesn't have the new can_apply flag, fetch it fresh
+      if (!currentState || currentState.can_apply === undefined) {
         try {
           currentState = await fetchUserState();
         } catch (e) {
@@ -59,15 +61,22 @@ export default function ApplicationWizardGuard({
         return;
       }
 
-      // 2. ✅ CRITICAL: If in Manager Mode, bypass the tenant_profile_complete check.
-      // The manager is applying on behalf of a tenant, so the manager's personal DOB/NOK is irrelevant.
+      // 2. ✅ CRITICAL: If in Manager Mode, bypass the tenant checks.
       if (isManagerMode) {
         return;
       }
 
-      // 3. For normal users (Tenants/Staff applying for themselves),
-      // they MUST have completed their tenant profile (DOB + Next of Kin).
-      const isTenantReady = currentState?.tenant_profile_complete ?? false;
+      // 3. ✅ NEW ARCHITECTURE: Check the definitive 'can_apply' flag from the backend.
+      // If the backend says they can apply, we DO NOT redirect them to onboarding.
+      // This completely eliminates the stale-state loop after onboarding completion.
+      const canApply = currentState?.can_apply ?? false;
+
+      // Fallback: If can_apply is missing, check tenant_profile_complete on userState or user object
+      const isTenantReady =
+        canApply ||
+        (currentState?.tenant_profile_complete ??
+          user?.profile_complete ??
+          false);
 
       if (!isTenantReady) {
         const currentPath =
@@ -83,6 +92,7 @@ export default function ApplicationWizardGuard({
   }, [
     isAuthenticated,
     userState,
+    user,
     isLoading,
     hasMounted,
     router,
@@ -105,9 +115,11 @@ export default function ApplicationWizardGuard({
   const isProfileComplete = userState?.profile_complete ?? false;
   if (!isProfileComplete) return null;
 
-  // If not manager mode, we must also ensure tenant_profile_complete is true before rendering
+  // If not manager mode, verify they are allowed to apply
   if (!isManagerMode) {
-    const isTenantReady = userState?.tenant_profile_complete ?? false;
+    const canApply = userState?.can_apply ?? false;
+    const isTenantReady =
+      canApply || (userState?.tenant_profile_complete ?? false);
     if (!isTenantReady) return null;
   }
 

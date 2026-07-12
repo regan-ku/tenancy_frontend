@@ -2,17 +2,14 @@
 
 import React, { useState } from "react";
 import { useOnboardingWizardStore } from "@/store/onboardingWizard.store";
+import { useAuthStore } from "@/store/auth.store";
 import { profileApi } from "@/api/profile.api";
 
 export default function StepCompletion() {
-  const {
-    userRole,
-    formData,
-    setSubmitting,
-    isSubmitting,
-    error,
-    resetWizard,
-  } = useOnboardingWizardStore();
+  // ✅ FIX: Removed `resetWizard` from destructuring.
+  // We no longer want to mutate the global UI state while this component is visible.
+  const { userRole, formData, setSubmitting, isSubmitting, error } =
+    useOnboardingWizardStore();
 
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -32,25 +29,48 @@ export default function StepCompletion() {
         }
       });
 
+      // 1. Submit onboarding data to backend
       await profileApi.completeOnboarding(payload);
 
-      resetWizard();
+      // 2. Fetch the true next route from the backend's State Engine
+      const stateData = await useAuthStore.getState().fetchUserState();
 
+      // 3. Immediately update the auth store so guards know the profile is complete
+      if (stateData) {
+        useAuthStore.setState({ userState: stateData });
+
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser) {
+          useAuthStore.getState().setUser({
+            ...currentUser,
+            profile_complete: stateData.profile_complete,
+          });
+        }
+      }
+
+      // 4. ✅ FIX: Show success UI WITHOUT resetting the wizard state yet.
       setIsSuccess(true);
 
-      // ✅ FIX: Use window.location.href to force a full page reload
-      // This ensures the auth store is refreshed and the bootstrap process runs
+      // 5. ✅ FIX: Clear the persisted localStorage draft directly.
+      // This ensures the wizard is fresh for the next session without
+      // triggering a UI re-render that flashes Step 1.
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("tennacy-onboarding-draft");
+      }
+
+      // 6. Navigate to the correct destination
       setTimeout(() => {
-        if (userRole === "tenant") {
-          window.location.href = "/dashboard/tenant";
-        } else if (userRole === "landlord") {
-          window.location.href = "/dashboard/landlord";
+        let nextRoute = "/marketplace";
+
+        if (userRole === "landlord") {
+          nextRoute = "/properties/wizard";
         } else if (userRole === "agency") {
-          window.location.href = "/dashboard/agency";
-        } else {
-          window.location.href = "/dashboard";
+          nextRoute = "/pending-verification";
         }
-      }, 3000);
+
+        // Force full page reload to guarantee fresh state initialization
+        window.location.href = nextRoute;
+      }, 2000); // 2 seconds to read the success message
     } catch (err: any) {
       console.error("Onboarding submission failed:", err);
     } finally {
@@ -82,7 +102,7 @@ export default function StepCompletion() {
           </h2>
           <p className="text-slate-500 max-w-md mx-auto">
             {userRole === "tenant"
-              ? "You're all set! Redirecting you to your Tennacy dashboard..."
+              ? "You're all set! Redirecting you to the marketplace to browse properties..."
               : "Your documents have been submitted for review. Your Tennacy account is now 'Pending Verification'. Redirecting you to your dashboard..."}
           </p>
         </div>

@@ -54,6 +54,9 @@ export default function OnboardingGuard({
               profile_complete: state.profile_complete,
             } as any;
             setUser(currentUser);
+
+            // ✅ CRITICAL: Update the global store so other components/guards see the fresh state
+            useAuthStore.setState({ userState: state });
           }
         } catch (e) {
           console.error("OnboardingGuard failed to fetch user state", e);
@@ -62,20 +65,31 @@ export default function OnboardingGuard({
 
       const isProfileComplete = currentState?.profile_complete ?? false;
 
-      // ✅ CRITICAL HANDSHAKE: If they were redirected here from an Application Wizard
-      // (to finish DOB/NOK) OR their profile is genuinely incomplete, let them see the wizard.
-      if (redirectTo || !isProfileComplete) {
-        setIsChecking(false);
+      // ✅ CRITICAL FIX: THE "BOUNCE" MECHANISM
+      // If the profile is ALREADY complete, they should NEVER be stuck in the onboarding wizard,
+      // even if they were redirected here by another guard. Bounce them to their destination.
+      if (isProfileComplete) {
+        // For tenants, also verify they completed the legal requirements (DOB + NOK)
+        const isTenantReady =
+          currentState?.tenant_profile_complete ??
+          currentState?.can_apply ??
+          false;
+
+        // If they are a tenant and still missing legal requirements, let them see the wizard.
+        if (user?.role === "tenant" && !isTenantReady) {
+          setIsChecking(false);
+          return;
+        }
+
+        // They are fully complete! Send them to where they wanted to go.
+        const destination =
+          redirectTo || currentState?.next_route || "/marketplace";
+        router.push(destination);
         return;
       }
 
-      // If profile is ALREADY complete and there's no redirect_to,
-      // they shouldn't be here! Send them to their correct dashboard.
-      if (isProfileComplete) {
-        const nextRoute = currentState?.next_route || "/dashboard";
-        router.push(nextRoute); // e.g., /dashboard/agency, /properties/wizard
-        return;
-      }
+      // If profile is NOT complete, let them see the onboarding wizard.
+      setIsChecking(false);
     };
 
     checkAccess();

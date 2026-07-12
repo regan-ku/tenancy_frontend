@@ -1,14 +1,16 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation"; // ✅ ADDED
+import { useSearchParams } from "next/navigation";
 import { useApplicationWizardStore } from "@/store/applicationWizard.store";
+import { useAuthStore } from "@/store/auth.store"; // ✅ Import Auth Store
 import { propertiesApi } from "@/api/properties.api";
 
 export default function StepApplicationDetails() {
-  const searchParams = useSearchParams(); // ✅ ADDED
-  const isManagerMode = searchParams.get("mode") === "manager"; // ✅ ADDED
+  const searchParams = useSearchParams();
+  const isManagerMode = searchParams.get("mode") === "manager";
 
+  const { user } = useAuthStore(); // ✅ Get logged-in user data
   const { applicationType, formData, updateFormData, showStepValidation } =
     useApplicationWizardStore();
 
@@ -16,6 +18,34 @@ export default function StepApplicationDetails() {
   const [availableUnits, setAvailableUnits] = useState<any[]>([]);
   const [isLoadingUnits, setIsLoadingUnits] = useState(false);
   const [floorError, setFloorError] = useState<string | null>(null);
+
+  // ✅ FIX: Auto-populate formData with logged-in user's details if not in manager mode
+  useEffect(() => {
+    if (!isManagerMode && user) {
+      const updates: any = {};
+      if (!formData.full_name && user.full_name) {
+        updates.full_name = user.full_name;
+      }
+      if (!formData.phone_number && user.phone_number) {
+        updates.phone_number = user.phone_number;
+      }
+      if (!formData.email && user.email) {
+        updates.email = user.email;
+      }
+
+      // Only update if we actually found missing fields to fill
+      if (Object.keys(updates).length > 0) {
+        updateFormData(updates);
+      }
+    }
+  }, [
+    isManagerMode,
+    user,
+    formData.full_name,
+    formData.phone_number,
+    formData.email,
+    updateFormData,
+  ]);
 
   const filterUnitsByFloor = (
     allAvailableUnits: any[],
@@ -81,7 +111,6 @@ export default function StepApplicationDetails() {
         setAvailableFloors(floors);
 
         // ✅ FIX: If in Manager Mode, the unit is already selected.
-        // We just need to ensure the store has the unit details (code, rent, deposit) from the fetched list.
         if (isManagerMode && formData.target_unit_id) {
           const selectedUnit = units.find(
             (u) => u.id === formData.target_unit_id,
