@@ -10,10 +10,52 @@ import {
 import {
   landlordUnitManagementApi,
   UnitGroup,
-  UnitMedia,
-} from "@/api/landlordUnitManagement.api"; // Ensure this file exists and mirrors the agency unit management API
+} from "@/api/landlordUnitManagement.api";
 import UnitManagementTab from "@/components/landlord/landlordUnitManagementTab";
 import TenantsFinancialsTab from "@/components/landlord/landlordFinancialTab";
+
+// ✅ FIX: Unified type for media displayed in the hub.
+type DisplayMedia = {
+  id: number;
+  url: string;
+  media_type: "image" | "video";
+  caption?: string;
+  unit_id?: number;
+  unit_group_id?: number;
+  is_primary?: boolean;
+};
+
+// ✅ FIX: Strict type for form data to replace 'any'
+interface PropertyFormData {
+  title: string;
+  description: string;
+  property_category: string;
+  property_sub_type: string;
+  construction_type: string;
+  number_of_floors: number;
+  total_units_capacity: number;
+  is_single_unit_property: boolean;
+  has_water: boolean;
+  has_electricity: boolean;
+  has_internet: boolean;
+  has_cctv: boolean;
+  has_elevator: boolean;
+  has_generator: boolean;
+  has_gym: boolean;
+  has_swimming_pool: boolean;
+  allows_pets: boolean;
+  parking_spaces: number;
+  location_details: Record<string, string | number | undefined>;
+  listing_type: string;
+  is_published: boolean;
+}
+
+// ✅ FIX: Extended type for UnitGroup to include occupancy stats safely
+type ExtendedUnitGroup = UnitGroup & {
+  actual_units_count?: number;
+  occupied_units?: number;
+  available_units?: number;
+};
 
 // Dropdown Options mapped to backend Enums
 const categories = [
@@ -61,13 +103,36 @@ export default function LandlordPropertyDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [unitGroups, setUnitGroups] = useState<UnitGroup[]>([]);
-  const [formData, setFormData] = useState<any>({});
+  
+  // ✅ FIX: Replaced 'any' with strict PropertyFormData interface
+  const [formData, setFormData] = useState<PropertyFormData>({
+    title: "",
+    description: "",
+    property_category: "",
+    property_sub_type: "",
+    construction_type: "",
+    number_of_floors: 0,
+    total_units_capacity: 0,
+    is_single_unit_property: false,
+    has_water: false,
+    has_electricity: false,
+    has_internet: false,
+    has_cctv: false,
+    has_elevator: false,
+    has_generator: false,
+    has_gym: false,
+    has_swimming_pool: false,
+    allows_pets: false,
+    parking_spaces: 0,
+    location_details: {},
+    listing_type: "rental",
+    is_published: false,
+  });
+  
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Determine if the landlord can edit this property
-  // If it's fully delegated or view-only, they can't edit the core details
   const canEdit = property
     ? !property.is_delegated || property.delegation_type === "partial"
     : false;
@@ -101,7 +166,7 @@ export default function LandlordPropertyDetailPage() {
   useEffect(() => {
     if (property) {
       setFormData({
-        title: property.name || (property as any).title || "",
+        title: property.name || "",
         description: property.description || "",
         property_category: property.property_category || "",
         property_sub_type: property.property_sub_type || "",
@@ -136,8 +201,8 @@ export default function LandlordPropertyDetailPage() {
         payload.location_details &&
         typeof payload.location_details === "object"
       ) {
-        payload.location = { ...payload.location_details };
-        delete payload.location_details;
+        (payload as Record<string, unknown>).location = { ...payload.location_details };
+        delete (payload as Record<string, unknown>).location_details;
       }
 
       await landlordPropertiesApi.updateProperty(Number(id), payload);
@@ -149,13 +214,17 @@ export default function LandlordPropertyDetailPage() {
       );
       setProperty(updatedData);
       landlordUnitManagementApi.getUnitGroups(Number(id)).then(setUnitGroups);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Property update failed:", error);
-      const backendErrors = error?.response?.data;
+      
+      // ✅ FIX: Strict type narrowing for error handling instead of 'any'
+      const err = error as { response?: { data?: Record<string, string | string[]> } };
+      const backendErrors = err?.response?.data;
+      
       if (backendErrors && typeof backendErrors === "object") {
         const errorMessages = Object.entries(backendErrors)
           .map(
-            ([field, messages]: [string, any]) =>
+            ([field, messages]) =>
               `${field === "detail" || field === "error" ? "" : field + ": "}${Array.isArray(messages) ? messages.join(", ") : messages}`,
           )
           .join("\n");
@@ -170,7 +239,6 @@ export default function LandlordPropertyDetailPage() {
     }
   };
 
-  // Landlords always have access to all tabs, but interactivity is controlled by `canEdit`
   const availableTabs: { key: string; label: string }[] = [];
   if (property) {
     availableTabs.push({ key: "overview", label: "Overview & Settings" });
@@ -312,14 +380,14 @@ export default function LandlordPropertyDetailPage() {
                 <FormField
                   label="Property Title"
                   value={formData.title}
-                  onChange={(v) => setFormData({ ...formData, title: v })}
+                  onChange={(v) => setFormData({ ...formData, title: String(v) })}
                   disabled={!isEditing}
                 />
                 <FormField
                   label="Category"
                   value={formData.property_category}
                   onChange={(v) =>
-                    setFormData({ ...formData, property_category: v })
+                    setFormData({ ...formData, property_category: String(v) })
                   }
                   disabled={!isEditing}
                   type="select"
@@ -329,7 +397,7 @@ export default function LandlordPropertyDetailPage() {
                   label="Sub-Type"
                   value={formData.property_sub_type}
                   onChange={(v) =>
-                    setFormData({ ...formData, property_sub_type: v })
+                    setFormData({ ...formData, property_sub_type: String(v) })
                   }
                   disabled={!isEditing}
                   type="select"
@@ -339,7 +407,7 @@ export default function LandlordPropertyDetailPage() {
                   label="Construction Type"
                   value={formData.construction_type}
                   onChange={(v) =>
-                    setFormData({ ...formData, construction_type: v })
+                    setFormData({ ...formData, construction_type: String(v) })
                   }
                   disabled={!isEditing}
                   type="select"
@@ -349,7 +417,7 @@ export default function LandlordPropertyDetailPage() {
               <FormField
                 label="Description"
                 value={formData.description}
-                onChange={(v) => setFormData({ ...formData, description: v })}
+                onChange={(v) => setFormData({ ...formData, description: String(v) })}
                 disabled={!isEditing}
                 type="textarea"
               />
@@ -396,7 +464,7 @@ export default function LandlordPropertyDetailPage() {
                 label="Is this a single unit property? (e.g., Bungalow, Plot)"
                 checked={formData.is_single_unit_property}
                 onChange={(v) =>
-                  setFormData({ ...formData, is_single_unit_property: v })
+                  setFormData({ ...formData, is_single_unit_property: Boolean(v) })
                 }
                 disabled={!isEditing}
               />
@@ -428,9 +496,11 @@ export default function LandlordPropertyDetailPage() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {unitGroups.map((group) => {
-                    const totalUnits = (group as any).actual_units_count || 0;
-                    const occupied = (group as any).occupied_units || 0;
-                    const available = (group as any).available_units || 0;
+                    // ✅ FIX: Safely cast to extended type instead of 'any'
+                    const groupData = group as ExtendedUnitGroup;
+                    const totalUnits = groupData.actual_units_count || 0;
+                    const occupied = groupData.occupied_units || 0;
+                    const available = groupData.available_units || 0;
 
                     let statusText = "";
                     let statusColor = "";
@@ -486,14 +556,14 @@ export default function LandlordPropertyDetailPage() {
                 <CheckboxField
                   label="Water"
                   checked={formData.has_water}
-                  onChange={(v) => setFormData({ ...formData, has_water: v })}
+                  onChange={(v) => setFormData({ ...formData, has_water: Boolean(v) })}
                   disabled={!isEditing}
                 />
                 <CheckboxField
                   label="Electricity"
                   checked={formData.has_electricity}
                   onChange={(v) =>
-                    setFormData({ ...formData, has_electricity: v })
+                    setFormData({ ...formData, has_electricity: Boolean(v) })
                   }
                   disabled={!isEditing}
                 />
@@ -501,21 +571,21 @@ export default function LandlordPropertyDetailPage() {
                   label="Internet/Wi-Fi"
                   checked={formData.has_internet}
                   onChange={(v) =>
-                    setFormData({ ...formData, has_internet: v })
+                    setFormData({ ...formData, has_internet: Boolean(v) })
                   }
                   disabled={!isEditing}
                 />
                 <CheckboxField
                   label="CCTV Security"
                   checked={formData.has_cctv}
-                  onChange={(v) => setFormData({ ...formData, has_cctv: v })}
+                  onChange={(v) => setFormData({ ...formData, has_cctv: Boolean(v) })}
                   disabled={!isEditing}
                 />
                 <CheckboxField
                   label="Elevator"
                   checked={formData.has_elevator}
                   onChange={(v) =>
-                    setFormData({ ...formData, has_elevator: v })
+                    setFormData({ ...formData, has_elevator: Boolean(v) })
                   }
                   disabled={!isEditing}
                 />
@@ -523,28 +593,28 @@ export default function LandlordPropertyDetailPage() {
                   label="Backup Generator"
                   checked={formData.has_generator}
                   onChange={(v) =>
-                    setFormData({ ...formData, has_generator: v })
+                    setFormData({ ...formData, has_generator: Boolean(v) })
                   }
                   disabled={!isEditing}
                 />
                 <CheckboxField
                   label="Gym"
                   checked={formData.has_gym}
-                  onChange={(v) => setFormData({ ...formData, has_gym: v })}
+                  onChange={(v) => setFormData({ ...formData, has_gym: Boolean(v) })}
                   disabled={!isEditing}
                 />
                 <CheckboxField
                   label="Swimming Pool"
                   checked={formData.has_swimming_pool}
                   onChange={(v) =>
-                    setFormData({ ...formData, has_swimming_pool: v })
+                    setFormData({ ...formData, has_swimming_pool: Boolean(v) })
                   }
                   disabled={!isEditing}
                 />
                 <CheckboxField
                   label="Allows Pets"
                   checked={formData.allows_pets}
-                  onChange={(v) => setFormData({ ...formData, allows_pets: v })}
+                  onChange={(v) => setFormData({ ...formData, allows_pets: Boolean(v) })}
                   disabled={!isEditing}
                 />
               </div>
@@ -558,13 +628,13 @@ export default function LandlordPropertyDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   label="Estate / Neighborhood"
-                  value={formData.location_details?.estate}
+                  value={formData.location_details?.estate as string}
                   onChange={(v) =>
                     setFormData({
                       ...formData,
                       location_details: {
                         ...formData.location_details,
-                        estate: v,
+                        estate: String(v),
                       },
                     })
                   }
@@ -572,13 +642,13 @@ export default function LandlordPropertyDetailPage() {
                 />
                 <FormField
                   label="Street / Road"
-                  value={formData.location_details?.street}
+                  value={formData.location_details?.street as string}
                   onChange={(v) =>
                     setFormData({
                       ...formData,
                       location_details: {
                         ...formData.location_details,
-                        street: v,
+                        street: String(v),
                       },
                     })
                   }
@@ -586,13 +656,13 @@ export default function LandlordPropertyDetailPage() {
                 />
                 <FormField
                   label="City / Town"
-                  value={formData.location_details?.city}
+                  value={formData.location_details?.city as string}
                   onChange={(v) =>
                     setFormData({
                       ...formData,
                       location_details: {
                         ...formData.location_details,
-                        city: v,
+                        city: String(v),
                       },
                     })
                   }
@@ -600,13 +670,13 @@ export default function LandlordPropertyDetailPage() {
                 />
                 <FormField
                   label="County"
-                  value={formData.location_details?.county}
+                  value={formData.location_details?.county as string}
                   onChange={(v) =>
                     setFormData({
                       ...formData,
                       location_details: {
                         ...formData.location_details,
-                        county: v,
+                        county: String(v),
                       },
                     })
                   }
@@ -614,13 +684,13 @@ export default function LandlordPropertyDetailPage() {
                 />
                 <FormField
                   label="Region"
-                  value={formData.location_details?.region}
+                  value={formData.location_details?.region as string}
                   onChange={(v) =>
                     setFormData({
                       ...formData,
                       location_details: {
                         ...formData.location_details,
-                        region: v,
+                        region: String(v),
                       },
                     })
                   }
@@ -628,13 +698,13 @@ export default function LandlordPropertyDetailPage() {
                 />
                 <FormField
                   label="Postal Code"
-                  value={formData.location_details?.postal_code}
+                  value={formData.location_details?.postal_code as string}
                   onChange={(v) =>
                     setFormData({
                       ...formData,
                       location_details: {
                         ...formData.location_details,
-                        postal_code: v,
+                        postal_code: String(v),
                       },
                     })
                   }
@@ -643,13 +713,13 @@ export default function LandlordPropertyDetailPage() {
                 <div className="md:col-span-2">
                   <FormField
                     label="Nearby Landmark"
-                    value={formData.location_details?.landmark}
+                    value={formData.location_details?.landmark as string}
                     onChange={(v) =>
                       setFormData({
                         ...formData,
                         location_details: {
                           ...formData.location_details,
-                          landmark: v,
+                          landmark: String(v),
                         },
                       })
                     }
@@ -721,7 +791,7 @@ export default function LandlordPropertyDetailPage() {
                   label="Listing Type"
                   value={formData.listing_type}
                   onChange={(v) =>
-                    setFormData({ ...formData, listing_type: v })
+                    setFormData({ ...formData, listing_type: String(v) })
                   }
                   disabled={!isEditing}
                   type="select"
@@ -733,7 +803,7 @@ export default function LandlordPropertyDetailPage() {
                   label="Published to Public Marketplace"
                   checked={formData.is_published || false}
                   onChange={(v) =>
-                    setFormData({ ...formData, is_published: v })
+                    setFormData({ ...formData, is_published: Boolean(v) })
                   }
                   disabled={!isEditing}
                 />
@@ -946,7 +1016,7 @@ function PropertyMediaHub({
   onPropertyCoverChange: (url: string) => void;
 }) {
   const [unitGroups, setUnitGroups] = useState<UnitGroup[]>([]);
-  const [allMedia, setAllMedia] = useState<UnitMedia[]>([]);
+  const [allMedia, setAllMedia] = useState<DisplayMedia[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploadingPropertyMedia, setUploadingPropertyMedia] = useState(false);
   const [editingGroupCoverId, setEditingGroupCoverId] = useState<number | null>(
@@ -972,7 +1042,7 @@ function PropertyMediaHub({
         landlordPropertiesApi.getPropertyMedia(propertyId),
       ]);
       setUnitGroups(groupsData);
-      setAllMedia(mediaData);
+      setAllMedia(mediaData as DisplayMedia[]);
     } catch (error) {
       console.error(error);
     } finally {
@@ -1062,9 +1132,8 @@ function PropertyMediaHub({
           { unit_group_id: groupId },
         );
       }
-      const mediaData =
-        await landlordPropertiesApi.getPropertyMedia(propertyId);
-      setAllMedia(mediaData);
+      const mediaData = await landlordPropertiesApi.getPropertyMedia(propertyId);
+      setAllMedia(mediaData as DisplayMedia[]);
     } catch (error) {
       alert("Failed to upload group media.");
     } finally {
@@ -1115,6 +1184,7 @@ function PropertyMediaHub({
   const propertyGallery = allMedia.filter(
     (m) => !m.unit_group_id && !m.unit_id,
   );
+  
   if (loading)
     return (
       <div className="text-center py-12 text-slate-400">
@@ -1326,7 +1396,6 @@ function PropertyMediaHub({
                             onUpdateCaption={(newCaption) =>
                               handleUpdateCaption(item.id, newCaption)
                             }
-                            size="small"
                           />
                         ))}
                       </div>
@@ -1351,21 +1420,21 @@ function MediaCard({
   onDelete,
   onSetAsCover,
   onUpdateCaption,
-  size = "normal",
 }: {
-  item: UnitMedia;
+  item: DisplayMedia;
   canEdit: boolean;
   onDelete: () => void;
   onSetAsCover?: () => void;
   onUpdateCaption: (newCaption: string) => void;
-  size?: "normal" | "small";
 }) {
   const [isEditingCaption, setIsEditingCaption] = useState(false);
   const [captionValue, setCaptionValue] = useState(item.caption || "");
+  
   const handleSaveCaption = () => {
     onUpdateCaption(captionValue);
     setIsEditingCaption(false);
   };
+  
   const handleDownload = () => {
     const link = document.createElement("a");
     link.href = item.url;

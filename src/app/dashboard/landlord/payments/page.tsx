@@ -7,45 +7,34 @@ import {
   PropertyFinancials,
   TenantLedgerItem,
 } from "@/api/payments.api";
-import PaymentActionsModal from "@/components/landlord/PaymentActionsModal";
 
 export default function LandlordPaymentsPage() {
   const [overview, setOverview] = useState<FinancialOverview | null>(null);
-  const [propertyFinancials, setPropertyFinancials] = useState<
-    PropertyFinancials[]
-  >([]);
+  const [propertyFinancials, setPropertyFinancials] = useState<PropertyFinancials[]>([]);
   const [ledger, setLedger] = useState<TenantLedgerItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalAction, setModalAction] = useState<"stk" | "reminder">("stk");
-  const [selectedTenant, setSelectedTenant] = useState<TenantLedgerItem | null>(
-    null,
-  );
-
   useEffect(() => {
     const fetchData = async () => {
-      const [overviewData, propFinData, ledgerData] = await Promise.all([
-        paymentsApi.getFinancialOverview(),
-        paymentsApi.getPropertyFinancials(),
-        paymentsApi.getMasterLedger(),
-      ]);
-      setOverview(overviewData);
-      setPropertyFinancials(propFinData);
-      setLedger(ledgerData);
-      setLoading(false);
+      try {
+        const [overviewData, propFinData, ledgerData] = await Promise.all([
+          paymentsApi.getFinancialOverview(),
+          paymentsApi.getPropertyFinancials(),
+          paymentsApi.getMasterLedger(),
+        ]);
+        setOverview(overviewData);
+        setPropertyFinancials(propFinData);
+        setLedger(ledgerData);
+      } catch (error) {
+        console.error("Failed to fetch financial data", error);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchData();
   }, []);
 
   const formatCurrency = (amount: number) => `KES ${amount.toLocaleString()}`;
-
-  const openModal = (action: "stk" | "reminder", tenant: TenantLedgerItem) => {
-    setModalAction(action);
-    setSelectedTenant(tenant);
-    setIsModalOpen(true);
-  };
 
   const handleDownloadReceipt = async (receiptId: string) => {
     try {
@@ -58,6 +47,7 @@ export default function LandlordPaymentsPage() {
       link.click();
       link.remove();
     } catch (error) {
+      console.error("Failed to download receipt.", error);
       alert("Failed to download receipt.");
     }
   };
@@ -70,8 +60,7 @@ export default function LandlordPaymentsPage() {
           Financial Command Center
         </h1>
         <p className="text-slate-500 text-sm mt-1">
-          Track collections, manage arrears, and request payments across all
-          your properties.
+          Track collections, manage arrears, and monitor financial health across all your properties.
         </p>
       </div>
 
@@ -81,10 +70,7 @@ export default function LandlordPaymentsPage() {
           Array(4)
             .fill(0)
             .map((_, i) => (
-              <div
-                key={i}
-                className="h-28 bg-slate-100 animate-pulse rounded-2xl"
-              ></div>
+              <div key={i} className="h-28 bg-slate-100 animate-pulse rounded-2xl"></div>
             ))
         ) : (
           <>
@@ -102,7 +88,7 @@ export default function LandlordPaymentsPage() {
             />
             <KPICard
               title="Pending Invoices"
-              value={overview?.pending_invoices || 0}
+              value={overview?.pending_invoices || 0} 
               icon="🧾"
               color="bg-blue-50 text-blue-600"
             />
@@ -129,12 +115,8 @@ export default function LandlordPaymentsPage() {
             >
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <p className="font-bold text-slate-800">
-                    {prop.property_name}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {prop.total_units} Units
-                  </p>
+                  <p className="font-bold text-slate-800">{prop.property_name}</p>
+                  <p className="text-xs text-slate-500">{prop.total_units} Units</p>
                 </div>
                 <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">
                   Property ID: {prop.property_id}
@@ -142,17 +124,13 @@ export default function LandlordPaymentsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-slate-400 uppercase font-bold">
-                    Collected
-                  </p>
+                  <p className="text-xs text-slate-400 uppercase font-bold">Collected</p>
                   <p className="text-lg font-extrabold text-green-600">
                     {formatCurrency(prop.collected_this_month)}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 uppercase font-bold">
-                    Arrears
-                  </p>
+                  <p className="text-xs text-slate-400 uppercase font-bold">Arrears</p>
                   <p className="text-lg font-extrabold text-red-600">
                     {formatCurrency(prop.outstanding_arrears)}
                   </p>
@@ -163,14 +141,12 @@ export default function LandlordPaymentsPage() {
         </div>
       </div>
 
-      {/* Master Ledger & Tenant Actions */}
+      {/* Master Ledger */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800">
-            Master Ledger & Tenant Actions
-          </h2>
+          <h2 className="text-lg font-bold text-slate-800">Master Ledger</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Request payments, send reminders, and download receipts.
+            Track tenant balances and download receipts.
           </p>
         </div>
 
@@ -186,20 +162,13 @@ export default function LandlordPaymentsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {ledger.map((tenant) => (
-                <tr
-                  key={tenant.id}
-                  className="hover:bg-slate-50 transition-colors"
-                >
+                <tr key={tenant.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4">
-                    <p className="font-bold text-slate-800">
-                      {tenant.tenant_name}
-                    </p>
+                    <p className="font-bold text-slate-800">{tenant.tenant_name}</p>
                     <p className="text-xs text-slate-500">
                       {tenant.unit_code} • {tenant.property_name}
                     </p>
-                    <p className="text-xs text-slate-400">
-                      {tenant.tenant_phone}
-                    </p>
+                    <p className="text-xs text-slate-400">{tenant.tenant_phone}</p>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col gap-1 text-xs">
@@ -222,8 +191,8 @@ export default function LandlordPaymentsPage() {
                         tenant.status === "paid"
                           ? "bg-green-100 text-green-700"
                           : tenant.status === "overdue"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-yellow-100 text-yellow-700"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-yellow-100 text-yellow-700"
                       }`}
                     >
                       {tenant.status}
@@ -231,31 +200,15 @@ export default function LandlordPaymentsPage() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      {tenant.balance > 0 && (
-                        <>
-                          <button
-                            onClick={() => openModal("stk", tenant)}
-                            className="text-xs bg-primary text-white px-3 py-1.5 rounded-lg font-bold hover:bg-primary/90"
-                          >
-                            Request STK
-                          </button>
-                          <button
-                            onClick={() => openModal("reminder", tenant)}
-                            className="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-200"
-                          >
-                            Remind
-                          </button>
-                        </>
-                      )}
-                      {tenant.receipt_id && (
+                      {tenant.receipt_id ? (
                         <button
-                          onClick={() =>
-                            handleDownloadReceipt(tenant.receipt_id!)
-                          }
+                          onClick={() => handleDownloadReceipt(tenant.receipt_id!)}
                           className="text-xs text-secondary hover:underline font-bold"
                         >
-                          Receipt
+                          Download Receipt
                         </button>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">No receipt</span>
                       )}
                     </div>
                   </td>
@@ -265,28 +218,16 @@ export default function LandlordPaymentsPage() {
           </table>
         </div>
       </div>
-
-      {/* Action Modal */}
-      {isModalOpen && selectedTenant && (
-        <PaymentActionsModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          action={modalAction}
-          tenant={selectedTenant}
-        />
-      )}
     </div>
   );
 }
 
-// Sub-component for KPI Cards
-function KPICard({ title, value, icon, color }: any) {
+// ✅ FIX: Changed `value` type to `string | number` to accept both formatted strings and raw numbers
+function KPICard({ title, value, icon, color }: { title: string; value: string | number; icon: string; color: string }) {
   return (
     <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
       <div className="flex justify-between items-start mb-3">
-        <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${color}`}
-        >
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${color}`}>
           {icon}
         </div>
       </div>

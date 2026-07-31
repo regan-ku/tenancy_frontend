@@ -1,16 +1,17 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import apiClient from "@/api/axios";
 import { endpoints } from "@/config/endpoints";
 import AuthLayout from "@/components/layouts/AuthLayout";
 
-export default function ResetPasswordPage() {
+// ✅ Inner component that safely uses useSearchParams
+function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get("token"); // Adjust if your backend uses a different param name
+  const token = searchParams.get("token") || "";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -34,21 +35,18 @@ export default function ResetPasswordPage() {
     setError("");
 
     try {
-      // Fallback endpoint provided in case it's not in your endpoints.ts yet
       await apiClient.post(
-        endpoints.AUTH?.RESET_PASSWORD ||
-          "/api/accounts/password-reset/confirm/",
-        {
-          token,
-          password,
-        },
+        endpoints.AUTH?.RESET_PASSWORD || "/api/accounts/password-reset/confirm/",
+        { token, password }
       );
       setIsSuccess(true);
       setTimeout(() => router.push("/login"), 3000);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      // ✅ FIX: Replaced 'any' with 'unknown' and proper type narrowing
+      const errorObj = err as { response?: { data?: { detail?: string } } };
       setError(
-        err.response?.data?.detail ||
-          "Failed to reset password. The link may have expired.",
+        errorObj.response?.data?.detail ||
+          "Failed to reset password. The link may have expired."
       );
     } finally {
       setIsLoading(false);
@@ -64,12 +62,8 @@ export default function ResetPasswordPage() {
         {!isSuccess ? (
           <>
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-primary-dark">
-                Reset Password
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Enter your new password below.
-              </p>
+              <h2 className="text-2xl font-bold text-primary-dark">Reset Password</h2>
+              <p className="mt-1 text-sm text-slate-500">Enter your new password below.</p>
             </div>
 
             {error && (
@@ -80,16 +74,14 @@ export default function ResetPasswordPage() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  New Password
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="input-base pr-10"
+                    className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                     placeholder="Min 8 characters"
                   />
                   <button
@@ -103,15 +95,13 @@ export default function ResetPasswordPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Confirm New Password
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
                 <input
                   type={showPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="input-base"
+                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary outline-none"
                   placeholder="Re-enter password"
                 />
               </div>
@@ -119,7 +109,7 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full btn-primary py-3 text-base disabled:opacity-70 flex justify-center items-center gap-2"
+                className="w-full bg-primary text-white font-bold py-3 rounded-lg hover:bg-primary/90 disabled:opacity-70 flex justify-center items-center gap-2 transition-colors"
               >
                 {isLoading ? (
                   <>
@@ -135,40 +125,33 @@ export default function ResetPasswordPage() {
         ) : (
           <div className="text-center space-y-4 py-6 animate-in fade-in zoom-in-95">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <svg
-                className="w-8 h-8 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M5 13l4 4L19 7"
-                ></path>
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-primary-dark">
-              Password Reset!
-            </h2>
+            <h2 className="text-2xl font-bold text-primary-dark">Password Reset!</h2>
             <p className="text-slate-500 text-sm">
-              Your password has been successfully updated. Redirecting you to
-              login...
+              Your password has been successfully updated. Redirecting you to login...
             </p>
             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
           </div>
         )}
       </div>
 
-      <div className="text-center text-sm">
-        <Link
-          href="/login"
-          className="text-secondary font-bold hover:underline transition-colors"
-        >
+      <div className="text-center text-sm mt-6">
+        <Link href="/login" className="text-secondary font-bold hover:underline transition-colors">
           ← Back to Sign In
         </Link>
       </div>
     </AuthLayout>
+  );
+}
+
+// ✅ Outer component that provides the Suspense boundary
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-400">Loading reset form...</div>}>
+      <ResetPasswordForm />
+    </Suspense>
   );
 }

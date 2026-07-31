@@ -2,11 +2,87 @@ import apiClient from "@/api/axios";
 import { endpoints } from "@/config/endpoints";
 
 // ==========================================
-// INTERFACES
+// RAW BACKEND RESPONSE TYPES (To avoid 'any')
+// ==========================================
+interface RawDelegationInfo {
+  agency_name?: string | null;
+  delegation_type?: "full" | "partial" | "view_only" | null;
+  status?: "active" | "pending" | "revoked" | null;
+}
+
+interface RawLocationDetails {
+  estate?: string;
+  street?: string;
+  city?: string;
+  county?: string;
+  region?: string;
+  postal_code?: string;
+  landmark?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+}
+
+interface RawPropertyResponse {
+  id: number;
+  delegation_id?: number | null;
+  title: string;
+  location_details?: RawLocationDetails | null;
+  total_units?: number;
+  total_units_capacity?: number;
+  occupied_units?: number;
+  available_units?: number;
+  occupancy_rate?: number;
+  ownership_status?: "self_managed" | "delegated";
+  delegation_info?: RawDelegationInfo | null;
+  is_active?: boolean;
+  is_published?: boolean;
+  description?: string;
+  property_category?: string;
+  property_sub_type?: string;
+  construction_type?: string;
+  number_of_floors?: number;
+  is_single_unit_property?: boolean;
+  has_water?: boolean;
+  has_electricity?: boolean;
+  has_internet?: boolean;
+  has_cctv?: boolean;
+  has_elevator?: boolean;
+  has_generator?: boolean;
+  has_gym?: boolean;
+  has_swimming_pool?: boolean;
+  allows_pets?: boolean;
+  parking_spaces?: number;
+  listing_type?: string;
+  cover_photo?: string;
+}
+
+interface RawMediaResponse {
+  id: number;
+  media_type: string;
+  file?: string | null;
+  url?: string | null;
+  caption?: string | null;
+  display_order?: number | null;
+  created_at?: string | null;
+  unit?: number | null;
+  unit_group?: number | null;
+}
+
+export interface DelegationResponse {
+  id: number;
+  property_id: number;
+  agency_id: number;
+  delegation_type: "full" | "partial" | "view_only";
+  status: "active" | "pending" | "revoked";
+  created_at: string;
+}
+
+// ==========================================
+// FRONTEND INTERFACES
 // ==========================================
 export interface LandlordProperty {
   id: number;
-  delegation_id?: number | null; // Tracks the active delegation record if delegated
+  delegation_id?: number | null;
   name: string;
   location: string;
   total_units: number;
@@ -79,28 +155,53 @@ export interface PropertyTeamMember {
   assigned_at: string;
 }
 
+export interface UpdatePropertyPayload {
+  title?: string;
+  description?: string;
+  property_category?: string;
+  property_sub_type?: string;
+  construction_type?: string;
+  number_of_floors?: number;
+  total_units_capacity?: number;
+  is_single_unit_property?: boolean;
+  has_water?: boolean;
+  has_electricity?: boolean;
+  has_internet?: boolean;
+  has_cctv?: boolean;
+  has_elevator?: boolean;
+  has_generator?: boolean;
+  has_gym?: boolean;
+  has_swimming_pool?: boolean;
+  allows_pets?: boolean;
+  parking_spaces?: number;
+  location_details?: Record<string, unknown>;
+  location?: Record<string, unknown>;
+  listing_type?: string;
+  is_published?: boolean;
+}
+
 // ==========================================
 // API METHODS
 // ==========================================
 export const landlordPropertiesApi = {
   /**
    * Fetches all properties owned by the authenticated landlord.
-   * The backend should automatically filter this list based on the user's JWT.
    */
   getProperties: async (): Promise<LandlordProperty[]> => {
     try {
-      const response = await apiClient.get(endpoints.PROPERTIES.LIST);
+      const response = await apiClient.get<RawPropertyResponse[] | { results: RawPropertyResponse[] }>(
+        endpoints.PROPERTIES.LIST
+      );
       const propertiesArray = Array.isArray(response.data)
         ? response.data
         : response.data.results || [];
 
-      return propertiesArray.map((prop: any) => {
+      return propertiesArray.map((prop: RawPropertyResponse) => {
         const locationDetails = prop.location_details;
         const locationString = locationDetails
-          ? `${locationDetails.estate || ""}, ${locationDetails.city || ""}`.replace(
-              /^, |, $/g,
-              "",
-            )
+          ? `${locationDetails.estate || ""}, ${locationDetails.city || ""}`
+              .replace(/^, |, $/g, "")
+              .trim()
           : "Location not set";
 
         const isDelegated = prop.ownership_status === "delegated";
@@ -132,15 +233,16 @@ export const landlordPropertiesApi = {
 
   getPropertyDetail: async (id: number): Promise<LandlordPropertyDetail> => {
     try {
-      const response = await apiClient.get(endpoints.PROPERTIES.DETAIL(id));
+      const response = await apiClient.get<RawPropertyResponse>(
+        endpoints.PROPERTIES.DETAIL(id)
+      );
       const prop = response.data;
 
       const locationDetails = prop.location_details;
       const locationString = locationDetails
-        ? `${locationDetails.estate || ""}, ${locationDetails.city || ""}`.replace(
-            /^, |, $/g,
-            "",
-          )
+        ? `${locationDetails.estate || ""}, ${locationDetails.city || ""}`
+            .replace(/^, |, $/g, "")
+            .trim()
         : "Location not set";
 
       const isDelegated = prop.ownership_status === "delegated";
@@ -171,17 +273,27 @@ export const landlordPropertiesApi = {
         number_of_floors: prop.number_of_floors || 1,
         total_units_capacity: prop.total_units_capacity || 1,
         is_single_unit_property: prop.is_single_unit_property || false,
-        has_water: prop.has_water,
-        has_electricity: prop.has_electricity,
-        has_internet: prop.has_internet,
-        has_cctv: prop.has_cctv,
-        has_elevator: prop.has_elevator,
-        has_generator: prop.has_generator,
-        has_gym: prop.has_gym,
-        has_swimming_pool: prop.has_swimming_pool,
-        allows_pets: prop.allows_pets,
+        has_water: prop.has_water || false,
+        has_electricity: prop.has_electricity || false,
+        has_internet: prop.has_internet || false,
+        has_cctv: prop.has_cctv || false,
+        has_elevator: prop.has_elevator || false,
+        has_generator: prop.has_generator || false,
+        has_gym: prop.has_gym || false,
+        has_swimming_pool: prop.has_swimming_pool || false,
+        allows_pets: prop.allows_pets || false,
         parking_spaces: prop.parking_spaces || 0,
-        location_details: prop.location_details || {},
+        location_details: {
+          estate: locationDetails?.estate || "",
+          street: locationDetails?.street || "",
+          city: locationDetails?.city || "",
+          county: locationDetails?.county || "",
+          region: locationDetails?.region || "",
+          postal_code: locationDetails?.postal_code || "",
+          landmark: locationDetails?.landmark || "",
+          latitude: locationDetails?.latitude || undefined,
+          longitude: locationDetails?.longitude || undefined,
+        },
         listing_type: prop.listing_type || "",
         is_active: prop.is_active || false,
         cover_photo: prop.cover_photo || "",
@@ -192,33 +304,37 @@ export const landlordPropertiesApi = {
     }
   },
 
-  updateProperty: async (id: number, data: any): Promise<any> => {
-    const payload = { ...data };
+  updateProperty: async (
+    id: number,
+    data: UpdatePropertyPayload
+  ): Promise<LandlordPropertyDetail> => {
+    // ✅ FIX: Clean destructuring prevents "unused variable" warnings and avoids 'any'
+    const { location_details, ...rest } = data;
+    const payload =
+      location_details && !data.location
+        ? { ...rest, location: location_details }
+        : rest;
 
-    if (payload.location_details && !payload.location) {
-      payload.location = payload.location_details;
-      delete payload.location_details;
-    }
-
-    const response = await apiClient.patch(
+    const response = await apiClient.patch<LandlordPropertyDetail>(
       endpoints.PROPERTIES.DETAIL(id),
-      payload,
+      payload
     );
     return response.data;
-  },
+    },
 
   getPropertyMedia: async (propertyId: number): Promise<PropertyMedia[]> => {
     try {
-      const response = await apiClient.get(
-        endpoints.PROPERTIES.MEDIA(propertyId),
-      );
+      const response = await apiClient.get<
+        RawMediaResponse[] | { results: RawMediaResponse[] }
+      >(endpoints.PROPERTIES.MEDIA(propertyId));
+      
       const mediaArray = Array.isArray(response.data)
         ? response.data
         : response.data.results || [];
 
       return mediaArray
-        .filter((m: any) => !m.unit && !m.unit_group)
-        .map((m: any) => ({
+        .filter((m: RawMediaResponse) => !m.unit && !m.unit_group)
+        .map((m: RawMediaResponse) => ({
           id: m.id,
           media_type: m.media_type,
           file: m.file || "",
@@ -237,19 +353,19 @@ export const landlordPropertiesApi = {
     propertyId: number,
     file: File,
     mediaType: string,
-    caption: string = "",
+    caption: string = ""
   ): Promise<PropertyMedia> => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("media_type", mediaType);
     formData.append("caption", caption);
 
-    const response = await apiClient.post(
+    const response = await apiClient.post<RawMediaResponse>(
       endpoints.PROPERTIES.MEDIA(propertyId),
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
-      },
+      }
     );
 
     const m = response.data;
@@ -266,22 +382,22 @@ export const landlordPropertiesApi = {
 
   deletePropertyMedia: async (
     propertyId: number,
-    mediaId: number,
+    mediaId: number
   ): Promise<void> => {
     await apiClient.delete(
-      endpoints.PROPERTIES.MEDIA_DETAIL(propertyId, mediaId),
+      endpoints.PROPERTIES.MEDIA_DETAIL(propertyId, mediaId)
     );
   },
 
   updateCoverPhoto: async (id: number, file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("cover_photo", file);
-    const response = await apiClient.patch(
+    const response = await apiClient.patch<{ cover_photo: string }>(
       endpoints.PROPERTIES.DETAIL(id),
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
-      },
+      }
     );
     return response.data.cover_photo || "";
   },
@@ -289,17 +405,17 @@ export const landlordPropertiesApi = {
   updateMediaCaption: async (
     propertyId: number,
     mediaId: number,
-    caption: string,
+    caption: string
   ): Promise<void> => {
     await apiClient.patch(
       endpoints.PROPERTIES.MEDIA_DETAIL(propertyId, mediaId),
-      { caption },
+      { caption }
     );
   },
 
   setCoverFromMedia: async (
     propertyId: number,
-    mediaUrl: string,
+    mediaUrl: string
   ): Promise<string> => {
     const response = await fetch(mediaUrl);
     const blob = await response.blob();
@@ -308,11 +424,11 @@ export const landlordPropertiesApi = {
     return await landlordPropertiesApi.updateCoverPhoto(propertyId, file);
   },
 
-  getPropertyTeam: async (
-    propertyId: number,
-  ): Promise<PropertyTeamMember[]> => {
+  getPropertyTeam: async (propertyId: number): Promise<PropertyTeamMember[]> => {
     try {
-      const response = await apiClient.get(`/properties/${propertyId}/staff/`);
+      const response = await apiClient.get<PropertyTeamMember[]>(
+        `/properties/${propertyId}/staff/`
+      );
       return response.data;
     } catch (error) {
       console.error("Failed to fetch property team:", error);
@@ -324,34 +440,26 @@ export const landlordPropertiesApi = {
   // LANDLORD SPECIFIC: DELEGATION MANAGEMENT
   // ==========================================
 
-  /**
-   * Delegate a property to an agency.
-   * (Used when the landlord wants to hand over management)
-   */
   delegateProperty: async (
     propertyId: number,
     agencyId: number,
     delegationType: "full" | "partial" | "view_only",
-    customPermissions?: Record<string, boolean>,
-  ): Promise<any> => {
-    const response = await apiClient.post(
+    customPermissions?: Record<string, boolean>
+  ): Promise<DelegationResponse> => {
+    const response = await apiClient.post<DelegationResponse>(
       `/properties/${propertyId}/delegate/`,
       {
         agency_id: agencyId,
         delegation_type: delegationType,
         custom_permissions: customPermissions || {},
-      },
+      }
     );
     return response.data;
   },
 
-  /**
-   * Revoke an existing delegation.
-   * (Used when the landlord wants to take back control from an agency)
-   */
   revokeDelegation: async (
     delegationId: number,
-    reason: string = "",
+    reason: string = ""
   ): Promise<void> => {
     await apiClient.post(`/agencies/delegations/${delegationId}/revoke/`, {
       reason,
