@@ -26,35 +26,35 @@ export default function StepPublish() {
         throw new Error("Property ID is missing. Cannot publish.");
       }
 
-      // 1. Update backend
+      // ✅ STEP 1: Finalize the wizard (Sets is_active = true safely after backend validation)
+      // This ensures multi-unit properties actually have units before becoming active.
+      await propertiesApi.finalizeProperty(propertyId);
+
+      // ✅ STEP 2: Update publishing preferences (is_published and listing_type)
       await propertiesApi.updateProperty(propertyId, {
-        is_active: true,
         is_published: publishToMarketplace,
         listing_type: publishToMarketplace ? listingType : null,
       });
 
-      // 2. Show the full-screen success/redirect mask
+      // 3. Show the full-screen success/redirect mask
       setIsRedirecting(true);
 
-      // 3. Reset the Zustand store
+      // 4. Reset the Zustand store
       resetWizard();
 
-      // 4. ✅ FIXED: Use window.location.href instead of router.push()
-      // This forces a hard page reload which:
-      // - Clears the stale wizard state from memory
-      // - Triggers a fresh bootstrap process
-      // - Re-fetches user state from backend
-      // - Ensures middleware sees the correct "property created" status
+      // 5. ✅ FIXED: Use window.location.href instead of router.push()
+      // This forces a hard page reload which clears stale wizard state and 
+      // triggers a fresh bootstrap process to fetch the updated user state.
       setTimeout(() => {
         const userRole = user?.role || "landlord";
         window.location.href = `/dashboard/${userRole}`;
-      }, 1500); // Show success screen for 1.5 seconds before redirecting
+0      }, 1500); // Show success screen for 1.5 seconds before redirecting
     } catch (err: any) {
       setIsRedirecting(false);
       setError(
-        err.response?.data?.detail ||
+        err.response?.data?.error || err.response?.data?.detail ||
           err.message ||
-          "Failed to publish property. Please try again.",
+          "Failed to publish property. Please check that all unit groups are created.",
       );
       setSubmitting(false);
     }
@@ -100,9 +100,10 @@ export default function StepPublish() {
       </div>
 
       {error && (
-        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">
+        <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center border border-red-200">
           {error}
         </div>
+
       )}
 
       {/* Property Summary */}
