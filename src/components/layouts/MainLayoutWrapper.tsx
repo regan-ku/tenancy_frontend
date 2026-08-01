@@ -7,29 +7,41 @@ import FooterWrapper from "./FooterWrapper";
 export default function MainLayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  // ✅ CHECK IF USER IS LOCKED IN THE WIZARD OR AUTH FLOW
-  // If they are, we render ONLY the page content. NO NAVBAR OR FOOTER.
-  const isLockedInWizardOrAuth = 
-    pathname.includes("/wizard") || 
-    pathname.includes("/auth") || 
-    pathname.includes("/login") || 
-    pathname.includes("/register");
+  // ✅ ROUTES WHERE NAVBAR & FOOTER SHOULD BE COMPLETELY HIDDEN
+  // If the current URL includes ANY of these strings, we render a blank shell.
+  const hiddenLayoutRoutes = [
+    "/wizard",               // Catches /applications/wizard, /properties/wizard, etc.
+    "/onboarding",           // Catches the main profile onboarding flow
+    "/pending-verification", // Catches the document verification holding page
+    "/auth",                 // Catches /auth/login, /auth/register
+    "/login",                // Direct login route
+    "/register",             // Direct register route
+    "/forgot-password",      // Password recovery flows
+    "/reset-password",       // Password reset flows
+  ];
 
-  if (isLockedInWizardOrAuth) {
+  // Check if the current path matches any of our hidden routes
+  const shouldHideLayout = hiddenLayoutRoutes.some((route) => 
+    pathname.includes(route)
+  );
+
+  // ✅ If they are in a wizard, onboarding, or auth flow, render ONLY the page content.
+  if (shouldHideLayout) {
     return <>{children}</>;
   }
 
+  // ✅ Otherwise, render the standard public/logged-in shell
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       {/* Top Navigation */}
       <MarketplaceNavbar />
 
-      {/* Main Content Area (This is where your actual pages get injected) */}
+      {/* Main Content Area */}
       <main className="flex-grow">
         {children}
       </main>
 
-      {/* Smart Footer (Automatically hides on wizards/auth via the FooterWrapper) */}
+      {/* Smart Footer */}
       <FooterWrapper />
     </div>
   );
