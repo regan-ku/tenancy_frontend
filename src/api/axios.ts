@@ -9,7 +9,7 @@ import env from "@/config/env";
 // 1. Create the base Axios instance
 const apiClient = axios.create({
   baseURL: env.API_URL,
-  timeout: 15000, // 15 seconds timeout
+  timeout: 60000, // ✅ UPGRADED: 60 seconds timeout to safely accommodate bulk database operations
   // ✅ FIX: Removed global "Content-Type": "application/json" header.
   // We will set it dynamically in the interceptor to avoid breaking FormData uploads.
 });

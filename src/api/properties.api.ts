@@ -205,8 +205,8 @@ export const propertiesApi = {
   },
   
   // ✅ NEW: Finalize the property wizard (sets is_active = true safely)
-  finalizeProperty: async (id: number | string): Promise<any> => {
-    const response = await apiClient.post(`/properties/${id}/finalize/`);
+   finalizeProperty: async (id: number | string): Promise<any> => {
+    const response = await apiClient.post(`/properties/properties/${id}/finalize/`);
     return response.data;
   },
 
