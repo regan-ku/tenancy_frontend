@@ -5,11 +5,9 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { marketplaceApi, Listing } from "@/api/marketplace.api";
 import ListingCard from "@/components/ui/ListingCard";
-import { useAuthStore } from "@/store/auth.store";
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
 
   // Data States
   const [featured, setFeatured] = useState<Listing[]>([]);
@@ -57,45 +55,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       
-      {/* ✅ SMART TOP NAVIGATION BAR */}
-      <header className="relative z-20 bg-white/90 backdrop-blur-md border-b border-slate-100 sticky top-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
-          <a href="/" className="text-xl font-extrabold text-primary tracking-tight flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-            </svg>
-            Tennacy
-          </a>
-          
-          <nav className="flex items-center gap-3 md:gap-6">
-            <a href="/marketplace" className="text-sm font-semibold text-slate-600 hover:text-primary transition-colors hidden sm:block">
-              Marketplace
-            </a>
-            
-            {isAuthenticated ? (
-              <a 
-                href="/dashboard" 
-                className="text-sm font-semibold text-white bg-primary hover:bg-primary/90 px-4 py-2 rounded-lg transition-all shadow-sm flex items-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                </svg>
-                <span className="hidden sm:inline">Dashboard</span>
-              </a>
-            ) : (
-              <>
-                <a href="/login" className="text-sm font-semibold text-slate-700 hover:text-primary transition-colors">
-                  Login
-                </a>
-                <a href="/register" className="text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 px-4 py-2 rounded-lg transition-colors shadow-sm hidden sm:block">
-                  Get Started
-                </a>
-              </>
-            )}
-          </nav>
-        </div>
-      </header>
-
       {/* ✅ COMPACT HERO SECTION & SEARCH */}
       <div className="relative bg-gradient-to-br from-blue-50 via-sky-50 to-white overflow-hidden border-b border-slate-100">
         {/* Decorative background blobs */}
@@ -152,7 +111,6 @@ export default function Home() {
                 className="w-full md:w-auto px-3 py-2.5 md:py-2 bg-slate-50 md:bg-transparent border border-slate-200 md:border-none rounded-lg md:rounded-full text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer appearance-none"
               >
                 <option value="">Unit Type</option>
-                {/* ✅ FIXED: Values now exactly match backend UnitType enums */}
                 <option value="single_room">Single Room</option>
                 <option value="bedsitter">Bedsitter</option>
                 <option value="one_bedroom">1 Bedroom</option>
