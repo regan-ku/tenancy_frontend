@@ -15,8 +15,9 @@ export default function PropertyWizardGuard({
   const { isAuthenticated, isLoading, userState, fetchUserState } =
     useAuthStore();
 
-  // ✅ FIX: Prevent Hydration Mismatch
   const [hasMounted, setHasMounted] = useState(false);
+  const [isChecking, setIsChecking] = useState(true); // ✅ Prevents blank screen flash
+
   useEffect(() => {
     setHasMounted(true);
   }, []);
@@ -25,6 +26,7 @@ export default function PropertyWizardGuard({
     if (isLoading || !hasMounted) return;
 
     const checkAccess = async () => {
+      // 1. Auth Check
       if (!isAuthenticated) {
         const currentPath =
           pathname +
@@ -33,6 +35,7 @@ export default function PropertyWizardGuard({
         return;
       }
 
+      // 2. Fetch Fresh State if needed
       let currentState = userState;
       if (!currentState || currentState.profile_complete === undefined) {
         try {
@@ -45,7 +48,7 @@ export default function PropertyWizardGuard({
       const isProfileComplete = currentState?.profile_complete ?? false;
       const userRole = currentState?.role;
 
-      // 1. Must have a complete profile
+      // 3. Profile Completion Check
       if (!isProfileComplete) {
         const currentPath =
           pathname +
@@ -56,10 +59,9 @@ export default function PropertyWizardGuard({
         return;
       }
 
-      // 2. Must be a Landlord or Agency to access the Property Wizard
+      // 4. Role Check
       const allowedRoles = ["landlord", "agency"];
       if (!userRole || !allowedRoles.includes(userRole)) {
-        // Redirect unauthorized roles away from the property wizard
         if (userRole === "tenant") {
           router.push("/marketplace");
         } else if (userRole) {
@@ -70,11 +72,18 @@ export default function PropertyWizardGuard({
         return;
       }
 
-      // 3. Check if backend dictates they need verification first
+      // ✅ CRITICAL FIX: Verification Check
+      // If they are already IN the wizard, we generally let them proceed or redirect to a specific verification page.
+      // We DO NOT return null here, as that causes the UI to freeze/disappear.
       if (currentState?.next_route === "/pending-verification") {
-        router.push("/pending-verification");
-        return;
+         // Optional: Allow them to finish the draft if they are already deep in the wizard?
+         // For now, we redirect to verification but preserve the return URL.
+         router.push(`/pending-verification?redirect_to=${encodeURIComponent(pathname)}`);
+         return;
       }
+
+      // All checks passed
+      setIsChecking(false);
     };
 
     checkAccess();
@@ -89,7 +98,8 @@ export default function PropertyWizardGuard({
     fetchUserState,
   ]);
 
-  if (!hasMounted || isLoading) {
+  // ✅ Show Loader while checking to prevent "Freeze/Blank Screen"
+  if (!hasMounted || isLoading || isChecking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-muted">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
@@ -98,16 +108,6 @@ export default function PropertyWizardGuard({
   }
 
   if (!isAuthenticated) return null;
-
-  const isProfileComplete = userState?.profile_complete ?? false;
-  const userRole = userState?.role;
-  const allowedRoles = ["landlord", "agency"];
-
-  if (!isProfileComplete || !userRole || !allowedRoles.includes(userRole)) {
-    return null;
-  }
-
-  if (userState?.next_route === "/pending-verification") return null;
 
   return <>{children}</>;
 }

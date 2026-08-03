@@ -1,8 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+
+type ApplicationWizardUserState = {
+  profile_complete?: boolean;
+  role?: string |null;
+  can_apply?: boolean;
+  tenant_profile_complete?: boolean;
+  next_route?: string;
+  [key: string]: any;
+};
+
+const MANAGER_ROLES = ["landlord", "agency", "agent", "admin"];
 
 export default function ApplicationWizardGuard({
   children,
@@ -12,89 +23,154 @@ export default function ApplicationWizardGuard({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading, userState, user, fetchUserState } =
-    useAuthStore();
 
-  // ✅ FIX: Prevent Hydration Mismatch
+  const {
+    isAuthenticated,
+    isLoading,
+    userState,
+    user,
+    fetchUserState,
+  } = useAuthStore();
+
   const [hasMounted, setHasMounted] = useState(false);
-  useEffect(() => {
-    setHasMounted(true);
-  }, []);
+  const [isChecking, setIsChecking] = useState(true);
+  const [resolvedState, setResolvedState] =
+    useState<ApplicationWizardUserState | null>(null);
 
-  // ✅ Detect if the manager is creating an application on behalf of someone else
+  const redirectStarted = useRef(false);
+
   const mode = searchParams.get("mode");
   const isManagerMode = mode === "manager";
 
   useEffect(() => {
-    if (isLoading || !hasMounted) return;
+    setHasMounted(true);
+  }, []);
+
+  const getCurrentPath = () => {
+    return (
+      pathname +
+      (searchParams?.toString() ? `?${searchParams.toString()}` : "")
+    );
+  };
+
+  const getStoreUserState = (): ApplicationWizardUserState | null => {
+    return (useAuthStore.getState() as any)?.userState ?? null;
+  };
+
+  useEffect(() => {
+    if (!hasMounted || isLoading) return;
+
+    let isActive = true;
+
+    const safeRedirect = (destination: string) => {
+      if (!isActive || redirectStarted.current) return;
+
+      redirectStarted.current = true;
+      setIsChecking(true);
+      router.push(destination);
+    };
 
     const checkAccess = async () => {
+      // User must be authenticated
       if (!isAuthenticated) {
-        const currentPath =
-          pathname +
-          (searchParams?.toString() ? `?${searchParams.toString()}` : "");
-        router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+        safeRedirect(
+          `/login?redirect=${encodeURIComponent(getCurrentPath())}`
+        );
         return;
       }
 
-      let currentState = userState;
+      // Get latest user state
+      let currentState =
+        (userState as ApplicationWizardUserState | null) ?? null;
 
-      // ✅ FIX: If state is missing or doesn't have the new can_apply flag, fetch it fresh
-      if (!currentState || currentState.can_apply === undefined) {
+      const shouldFetchState =
+        !currentState ||
+        currentState.profile_complete === undefined ||
+        currentState.can_apply === undefined;
+
+      if (shouldFetchState && fetchUserState) {
         try {
-          currentState = await fetchUserState();
-        } catch (e) {
-          console.error("ApplicationWizardGuard failed to fetch user state", e);
+          const fetchedState = await fetchUserState();
+
+          currentState =
+            (fetchedState as ApplicationWizardUserState | null) ??
+            getStoreUserState() ??
+            currentState;
+        } catch (error) {
+          console.error(
+            "ApplicationWizardGuard failed to fetch user state",
+            error
+          );
         }
       }
 
-      const isProfileComplete = currentState?.profile_complete ?? false;
+      if (!isActive) return;
 
-      // 1. Everyone must have a complete base profile
+      const freshState = currentState ?? getStoreUserState();
+
+      setResolvedState(freshState);
+
+      // Profile completion
+      const isProfileComplete =
+        freshState?.profile_complete ??
+        (user as any)?.profile_complete ??
+        false;
+
       if (!isProfileComplete) {
-        const currentPath =
-          pathname +
-          (searchParams?.toString() ? `?${searchParams.toString()}` : "");
-        router.push(
-          `/onboarding?redirect_to=${encodeURIComponent(currentPath)}`,
+        safeRedirect(
+          `/onboarding?redirect_to=${encodeURIComponent(
+            getCurrentPath()
+          )}`
         );
         return;
       }
 
-      // 2. ✅ CRITICAL: If in Manager Mode, bypass the tenant checks.
+      // Manager mode
       if (isManagerMode) {
+        const role = freshState?.role ?? (user as any)?.role ?? null;
+
+        if (!role || !MANAGER_ROLES.includes(role)) {
+          safeRedirect(role ? `/dashboard/${role}` : "/dashboard");
+          return;
+        }
+
+        setIsChecking(false);
         return;
       }
 
-      // 3. ✅ NEW ARCHITECTURE: Check the definitive 'can_apply' flag from the backend.
-      // If the backend says they can apply, we DO NOT redirect them to onboarding.
-      // This completely eliminates the stale-state loop after onboarding completion.
-      const canApply = currentState?.can_apply ?? false;
+      // Tenant mode
+      const canApply = freshState?.can_apply ?? false;
 
-      // Fallback: If can_apply is missing, check tenant_profile_complete on userState or user object
-      const isTenantReady =
-        canApply ||
-        (currentState?.tenant_profile_complete ??
-          user?.profile_complete ??
-          false);
+      const tenantProfileComplete =
+        freshState?.tenant_profile_complete ??
+        (user as any)?.profile_complete ??
+        false;
+
+      const isTenantReady = canApply || tenantProfileComplete;
 
       if (!isTenantReady) {
-        const currentPath =
-          pathname +
-          (searchParams?.toString() ? `?${searchParams.toString()}` : "");
-        router.push(
-          `/onboarding?redirect_to=${encodeURIComponent(currentPath)}`,
+        safeRedirect(
+          `/onboarding?redirect_to=${encodeURIComponent(
+            getCurrentPath()
+          )}`
         );
+        return;
       }
+
+      setIsChecking(false);
     };
 
     checkAccess();
+
+    return () => {
+      isActive = false;
+    };
   }, [
+    hasMounted,
+    isLoading,
     isAuthenticated,
     userState,
     user,
-    isLoading,
-    hasMounted,
     router,
     pathname,
     searchParams,
@@ -102,25 +178,47 @@ export default function ApplicationWizardGuard({
     fetchUserState,
   ]);
 
-  if (!hasMounted || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-muted">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-      </div>
-    );
+  const FullScreenLoader = () => (
+    <div className="min-h-screen flex items-center justify-center bg-surface-muted">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+    </div>
+  );
+
+  if (
+    !hasMounted ||
+    isLoading ||
+    isChecking ||
+    redirectStarted.current
+  ) {
+    return <FullScreenLoader />;
   }
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated) {
+    return <FullScreenLoader />;
+  }
 
-  const isProfileComplete = userState?.profile_complete ?? false;
-  if (!isProfileComplete) return null;
+  const isProfileComplete =
+    resolvedState?.profile_complete ??
+    (user as any)?.profile_complete ??
+    false;
 
-  // If not manager mode, verify they are allowed to apply
+  if (!isProfileComplete) {
+    return <FullScreenLoader />;
+  }
+
   if (!isManagerMode) {
-    const canApply = userState?.can_apply ?? false;
-    const isTenantReady =
-      canApply || (userState?.tenant_profile_complete ?? false);
-    if (!isTenantReady) return null;
+    const canApply = resolvedState?.can_apply ?? false;
+
+    const tenantProfileComplete =
+      resolvedState?.tenant_profile_complete ??
+      (user as any)?.profile_complete ??
+      false;
+
+    const isTenantReady = canApply || tenantProfileComplete;
+
+    if (!isTenantReady) {
+      return <FullScreenLoader />;
+    }
   }
 
   return <>{children}</>;
