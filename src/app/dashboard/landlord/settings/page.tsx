@@ -18,8 +18,13 @@ export default function LandlordSettingsPage() {
     "profile" | "next_of_kin" | "payments" | "verification"
   >("profile");
 
-  // State Management
-  const [profile, setProfile] = useState<LandlordProfile | null>(null);
+  // ==========================================
+  // STATE MANAGEMENT (✅ UPDATED FOR REFRESH)
+  // ==========================================
+  // Initialize with auth store user so UI doesn't blank out on refresh
+  const [profile, setProfile] = useState<LandlordProfile | null>(
+    user ? (user as unknown as LandlordProfile) : null
+  );
   const [nok, setNok] = useState<NextOfKin | null>(null);
   const [accounts, setAccounts] = useState<LandlordPaymentAccount[]>([]);
   const [verificationDocs, setVerificationDocs] = useState<
@@ -37,11 +42,29 @@ export default function LandlordSettingsPage() {
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // ==========================================
-  // DATA FETCHING
+  // DATA FETCHING (✅ UPDATED FOR REFRESH & DEBUGGING)
   // ==========================================
   useEffect(() => {
-    landlordSettingsApi.getProfile().then(setProfile).catch(console.error);
-  }, []);
+    const fetchProfile = async () => {
+      try {
+        const data = await landlordSettingsApi.getProfile();
+        console.log("🔍 Raw Profile API Response on Refresh:", data);
+        
+        // ✅ Unwrap nested responses (e.g., if backend returns { user: {...} } or { data: {...} })
+        const profileData = data?.user || data?.profile || data?.data || data;
+        
+        setProfile(profileData);
+      } catch (error) {
+        console.error("❌ Failed to fetch profile on refresh:", error);
+        // Fallback to auth store if API fails (e.g., 401 Unauthorized before token attaches)
+        if (user) {
+            setProfile(user as unknown as LandlordProfile);
+        }
+      }
+    };
+
+    fetchProfile();
+  }, [user]); // Added user to dependencies so it refetches if auth store loads late
 
   useEffect(() => {
     if (activeTab === "next_of_kin") {
@@ -56,7 +79,7 @@ export default function LandlordSettingsPage() {
   }, [activeTab]);
 
   // ==========================================
-  // HANDLERS
+  // HANDLERS (✅ UPDATED SAVE HANDLER FOR UNWRAPPING)
   // ==========================================
   const handleSaveProfile = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -67,9 +90,15 @@ export default function LandlordSettingsPage() {
         full_name: profile.full_name,
         phone_number: profile.phone_number,
       });
-      setProfile(updated);
+      
+      console.log("✅ Save Profile Raw Response:", updated);
+      // Unwrap nested response just in case
+      const updatedData = updated?.user || updated?.profile || updated?.data || updated;
+      
+      setProfile(updatedData);
       alert("✅ Profile updated successfully!");
     } catch (error) {
+      console.error("❌ Save Profile Error:", error);
       alert("❌ Failed to update profile.");
     } finally {
       setIsSavingProfile(false);

@@ -9,6 +9,7 @@ interface AuthStore {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isHydrating: boolean; // 🚨 NEW: Prevents UI from rendering before user data is loaded
   error: string | null;
   userState: any | null;
 
@@ -22,8 +23,10 @@ interface AuthStore {
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
+  // If there is a token, we are authenticated, but we are HYDRATING until we fetch the profile
   isAuthenticated: !!Cookies.get("access_token"),
   isLoading: false,
+  isHydrating: !!Cookies.get("access_token"), // 🚨 NEW: Starts as true if token exists
   error: null,
   userState: null,
 
@@ -39,7 +42,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       if (refresh) Cookies.set("refresh_token", refresh, { expires: 7 });
 
       // Smart wipe for onboarding drafts
-      const draftString = localStorage.getItem("tennacy-onboarding-draft");
+      const draftString = typeof window !== "undefined" ? localStorage.getItem("tennacy-onboarding-draft") : null;
       if (draftString) {
         try {
           const draft = JSON.parse(draftString);
@@ -57,24 +60,25 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         email: user?.email || user?.contact_email,
         full_name: user?.full_name || user?.name,
         phone_number: user?.phone_number || user?.profile?.phone_number,
+        role: user?.role, // 🚨 CRITICAL: Ensure role is mapped
         profile_complete:
           user?.profile_complete ?? user?.profile?.profile_complete ?? false,
       };
 
-      set({ user: safeUser, isAuthenticated: true, isLoading: false });
+      set({ user: safeUser as User, isAuthenticated: true, isLoading: false, isHydrating: false });
 
       // Fetch the ultimate source of truth from the backend
       const stateData = await get().fetchUserState();
       set({ userState: stateData });
 
-      // ✅ CRITICAL FIX: Sync profile_complete from userState into the user object
-      if (stateData && typeof stateData.profile_complete === "boolean") {
+      // ✅ CRITICAL FIX: Sync profile_complete and role from userState into the user object
+      if (stateData) {
         set({
           user: {
             ...safeUser,
-            profile_complete: stateData.profile_complete,
-            // ✅ REMOVED tenant_profile_complete from here to satisfy the User interface
-          },
+            profile_complete: stateData.profile_complete ?? safeUser.profile_complete,
+            role: stateData.role || safeUser.role, // Sync role from userState if backend provides it
+          } as User,
         });
       }
 
@@ -86,6 +90,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           err.message ||
           "Invalid email or password.",
         isLoading: false,
+        isHydrating: false,
       });
       return null;
     }
@@ -94,7 +99,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   logout: () => {
     Cookies.remove("access_token");
     Cookies.remove("refresh_token");
-    set({ user: null, isAuthenticated: false, userState: null });
+    set({ user: null, isAuthenticated: false, userState: null, isHydrating: false });
     if (typeof window !== "undefined") window.location.href = "/login";
   },
 
@@ -113,64 +118,55 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   // ✅ FIXED: Bulletproof initialization for page refreshes
   initializeAuth: async () => {
-    if (!get().isAuthenticated) return null;
-
-    if (!get().user) {
-      try {
-        set({ isLoading: true });
-        const profileResponse = await apiClient.get(endpoints.PROFILE.ME);
-        const rawData = profileResponse.data;
-
-        // 🚨 BULLETPROOF MERGER:
-        const userData = {
-          ...rawData,
-          ...(rawData.user ? rawData.user : {}),
-
-          email: rawData.email || rawData.user?.email || rawData.contact_email,
-          full_name:
-            rawData.full_name || rawData.user?.full_name || rawData.name,
-          role: rawData.role || rawData.user?.role,
-
-          phone_number:
-            rawData.phone_number ||
-            rawData.user?.phone_number ||
-            rawData.profile?.phone_number,
-
-          profile_complete:
-            rawData.profile_complete ?? rawData.user?.profile_complete ?? false,
-        };
-
-        set({ user: userData, isLoading: false });
-      } catch (error) {
-        console.error("Failed to fetch user profile on refresh", error);
-        set({ isLoading: false });
-        get().logout();
-        return null;
-      }
+    const hasToken = !!Cookies.get("access_token");
+    
+    if (!hasToken) {
+      set({ isHydrating: false, isAuthenticated: false });
+      return null;
     }
 
-    try {
-      const stateData = await get().fetchUserState();
-      set({ userState: stateData });
+    // 🚨 CRITICAL: Tell the UI to wait!
+    set({ isHydrating: true, isLoading: true, isAuthenticated: true });
 
-      // ✅ CRITICAL FIX: Sync profile_complete from userState into user object for Guards
-      if (
-        stateData &&
-        typeof stateData.profile_complete === "boolean" &&
-        get().user
-      ) {
-        set({
-          user: {
-            ...get().user!,
-            profile_complete: stateData.profile_complete,
-            // ✅ REMOVED tenant_profile_complete from here to satisfy the User interface
-          },
-        });
-      }
+    try {
+      // 1. Fetch Profile
+      const profileResponse = await apiClient.get(endpoints.PROFILE.ME);
+      const rawData = profileResponse.data;
+
+      // 🚨 BULLETPROOF UNWRAPPING: Handles nested Django responses
+      const baseData = rawData?.user || rawData?.profile || rawData;
+
+      const userData = {
+        ...baseData,
+        email: baseData.email || baseData.contact_email,
+        full_name: baseData.full_name || baseData.name,
+        role: baseData.role, // 🚨 CRITICAL: Map role directly
+        phone_number: baseData.phone_number || baseData.profile?.phone_number,
+        profile_complete: baseData.profile_complete ?? false,
+      };
+
+      set({ user: userData as User });
+
+      // 2. Fetch User State (Source of Truth for routing)
+      const stateData = await get().fetchUserState();
+      
+      set({ 
+        userState: stateData,
+        user: {
+          ...userData,
+          profile_complete: stateData?.profile_complete ?? userData.profile_complete,
+          role: stateData?.role || userData.role // Sync role from userState if available
+        } as User
+      });
 
       return stateData?.next_route || null;
     } catch (error) {
+      console.error("❌ Hydration failed (Token invalid or expired):", error);
+      get().logout();
       return null;
+    } finally {
+      // 🚨 CRITICAL: Tell the UI it's safe to render now
+      set({ isHydrating: false, isLoading: false });
     }
   },
 }));
