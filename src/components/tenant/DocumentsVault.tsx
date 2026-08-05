@@ -43,7 +43,7 @@ export default function DocumentVault() {
 
   const handleDownload = (url: string, title: string) => {
     // In production, triggers a secure blob download
-    alert(`Downloading: ${title}`);
+    alert(`Downloading: ${title} from ${url}`);
   };
 
   return (
@@ -126,7 +126,8 @@ export default function DocumentVault() {
                   <td className="px-6 py-4 text-right">
                     <button
                       onClick={() =>
-                        handleDownload(doc.download_url, doc.title)
+                        // ✅ FIXED: Added fallback to satisfy TypeScript string requirement
+                        handleDownload(doc.download_url || doc.file_url || "#", doc.title)
                       }
                       className="text-xs bg-primary text-white px-4 py-1.5 rounded-lg font-bold hover:bg-primary/90 flex items-center gap-1 ml-auto"
                     >

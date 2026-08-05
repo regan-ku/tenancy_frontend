@@ -10,7 +10,6 @@ interface TopbarProps {
   onMenuClick: () => void;
 }
 
-// ✅ POLYMORPHIC-AWARE HELPERS
 const getDisplayName = (user: any) => {
   if (!user) return "User";
   if (user?.full_name && String(user.full_name).trim() !== "")
@@ -30,7 +29,6 @@ const getInitial = (user: any) => {
   return name === "User" ? "U" : name.charAt(0).toUpperCase();
 };
 
-// ✅ DYNAMIC ROLE-BASED ROUTING HELPERS
 const getDashboardBase = (user: any) => {
   const role = user?.role || user?.user_type || "tenant";
   const basePaths: Record<string, string> = {
@@ -38,8 +36,8 @@ const getDashboardBase = (user: any) => {
     landlord: "/dashboard/landlord",
     agency: "/dashboard/agency",
     admin: "/dashboard/admin",
-    agent: "/dashboard/agency", // Agents operate under Agency dashboard
-    caretaker: "/dashboard/agency", // Caretakers operate under Agency dashboard
+    agent: "/dashboard/agency",
+    caretaker: "/dashboard/agency",
   };
   return basePaths[role] || "/dashboard";
 };
@@ -48,7 +46,6 @@ const getRoleRoute = (user: any, type: "profile" | "settings") => {
   const base = getDashboardBase(user);
   const role = user?.role || user?.user_type || "tenant";
 
-  // In our architecture, "Profile" is a tab inside "Settings" for Tenant, Agency, Admin, and Landlord.
   if (
     type === "profile" &&
     ["tenant", "agency", "admin", "landlord"].includes(role)
@@ -61,10 +58,13 @@ const getRoleRoute = (user: any, type: "profile" | "settings") => {
 
 export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
-  const { user, logout, isLoading } = useAuthStore();
+  const { user, logout, isLoading, isHydrating } = useAuthStore();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  
+  // ✅ HYDRATION FIX: Track if component has mounted in the browser
+  const [isMounted, setIsMounted] = useState(false);
 
   const profileRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -74,7 +74,13 @@ export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
   const userEmail =
     (user as any)?.email || (user as any)?.contact_email || "No Email";
 
+  // ✅ Safe loading state: False on server & first client render, True afterwards
+  const showLoadingState = isMounted && (isLoading || isHydrating);
+
   useEffect(() => {
+    // ✅ Mark as mounted AFTER the first render completes
+    setIsMounted(true);
+
     const handleClickOutside = (event: MouseEvent) => {
       if (
         profileRef.current &&
@@ -98,15 +104,15 @@ export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
       {/* Left Side */}
       <div className="flex items-center gap-4 flex-1">
         <Link href="/" className="flex items-center gap-2 lg:hidden">
-          <div className="relative w-8 h-8">
-            <Image
-              src="/images/logo.png"
-              alt="Tennacy"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+          {/* ✅ FIXED: Replaced fill with explicit width/height to eliminate Next.js warning */}
+          <Image
+            src="/images/logo.png"
+            alt="Tennacy"
+            width={32}
+            height={32}
+            className="object-contain"
+            priority
+          />
           <span className="text-xl font-bold text-primary-dark hidden sm:block">
             Tennacy
           </span>
@@ -208,7 +214,6 @@ export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
                   <p className="text-xs text-slate-400 mt-1">1 hour ago</p>
                 </a>
               </div>
-              {/* ✅ DYNAMIC NOTIFICATIONS ROUTE */}
               <Link
                 href={`${getDashboardBase(user)}/communications`}
                 className="block text-center text-sm text-primary font-medium py-2 hover:bg-slate-50"
@@ -219,21 +224,23 @@ export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
           )}
         </div>
 
-        {/* ✅ BULLETPROOF Profile Dropdown */}
+        {/* Profile Dropdown */}
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className="flex items-center gap-2 p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <div className="w-8 h-8 rounded-full bg-primary text-white font-bold flex items-center justify-center text-sm">
-              {isLoading ? (
+              {/* ✅ HYDRATION FIX APPLIED HERE */}
+              {showLoadingState ? (
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               ) : (
                 initial
               )}
             </div>
             <span className="hidden md:block text-sm font-medium text-slate-700">
-              {isLoading ? "Loading..." : displayName}
+              {/* ✅ HYDRATION FIX APPLIED HERE */}
+              {showLoadingState ? "Loading..." : displayName}
             </span>
             <svg
               className="w-4 h-4 text-slate-400 hidden md:block"
@@ -259,7 +266,6 @@ export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
                 <p className="text-xs text-slate-500 truncate">{userEmail}</p>
               </div>
               <div className="py-1">
-                {/* ✅ DYNAMIC PROFILE ROUTE */}
                 <Link
                   href={getRoleRoute(user, "profile")}
                   onClick={() => setIsProfileOpen(false)}
@@ -281,7 +287,6 @@ export default function LandlordTopbar({ onMenuClick }: TopbarProps) {
                   My Profile
                 </Link>
 
-                {/* ✅ DYNAMIC SETTINGS ROUTE */}
                 <Link
                   href={getRoleRoute(user, "settings")}
                   onClick={() => setIsProfileOpen(false)}
