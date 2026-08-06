@@ -7,7 +7,7 @@ import {
   TenantNotice,
 } from "@/api/tenantOperations.api";
 import { tenanciesApi, PersonalTenancy, TenantKPIs } from "@/api/tenancies.api";
-import RentalApplicationModal from "@/components/tenant/RentalApplicationModal";
+// ✅ Removed RentalApplicationModal import
 import TransferRequestModal from "@/components/tenant/TransferRequestModal";
 import NoticeToVacateModal from "@/components/tenant/NoticeToVacateModal";
 
@@ -22,18 +22,15 @@ export default function TenantApplicationsPage() {
     next_billing_date: "",
   });
   
-  // ✅ THE FIX: Replaced generic `loading` with `isInitialLoad`
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
 
-  const [showRentalModal, setShowRentalModal] = useState(false);
+  // ✅ Removed showRentalModal state
   const [transferTarget, setTransferTarget] = useState<PersonalTenancy | null>(null);
   const [noticeTarget, setNoticeTarget] = useState<PersonalTenancy | null>(null);
 
-  // Centralized data fetching function
   const fetchData = useCallback(async () => {
     try {
-      // 1. Fetch core data in parallel
       const [tens, apps, nots] = await Promise.all([
         tenanciesApi.getMyPersonalTenancies(),
         tenantOperationsApi.getMyApplications(),
@@ -44,15 +41,12 @@ export default function TenantApplicationsPage() {
       setApplications(apps);
       setNotices(nots);
 
-      // 2. Fetch KPIs (Passing 'tens' allows frontend fallback calculation if backend endpoint is missing)
       const kpiData = await tenanciesApi.getTenantKPIs(tens);
       setKpis(kpiData);
 
     } catch (error) {
       console.error("Failed to load tenant data", error);
     } finally {
-      // ✅ THE FIX: Once initial load is complete, we NEVER show the full-page spinner again.
-      // Subsequent calls to fetchData() will just silently swap the data arrays in the background.
       if (isInitialLoad) {
         setIsInitialLoad(false);
       }
@@ -70,7 +64,7 @@ export default function TenantApplicationsPage() {
     try {
       await tenantOperationsApi.cancelApplication(id);
       alert("Request cancelled successfully.");
-      fetchData(); // Silently updates the table in the background
+      fetchData(); 
     } catch (error: any) {
       alert("Failed to cancel request: " + (error.response?.data?.detail || "Unknown error"));
     } finally {
@@ -78,30 +72,25 @@ export default function TenantApplicationsPage() {
     }
   };
 
-  // ✅ NEW: Just closes the modal, no network requests
+  // ✅ Removed setShowRentalModal(false)
   const closeModal = () => {
-    setShowRentalModal(false);
     setTransferTarget(null);
     setNoticeTarget(null);
   };
 
-  // ✅ NEW: Closes modal AND silently refreshes data in the background
   const handleModalSuccess = () => {
     closeModal();
     fetchData(); 
   };
 
-  // Group applications by lifecycle stage
   const activeApps = applications.filter((app) =>
-    ["pending", "under_review", "approved", "termination"].includes(app.status) || 
-    (app.type === "termination" && ["pending", "under_review", "approved"].includes(app.status))
+    ["pending", "under_review", "approved"].includes(app.status)
   );
   
   const pastApps = applications.filter((app) =>
     ["completed", "rejected", "cancelled", "expired"].includes(app.status),
   );
 
-  // ✅ THE FIX: This block now ONLY runs the very first time the user visits the URL.
   if (isInitialLoad) {
     return <div className="p-12 text-center text-slate-500">Loading your applications and requests...</div>;
   }
@@ -113,21 +102,13 @@ export default function TenantApplicationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-primary-dark">Applications & Requests</h1>
           <p className="text-slate-500 text-sm mt-1">
-            Manage new rental applications, transfer requests, and notices to vacate.
+            Track your transfer requests, notices to vacate, and application history.
           </p>
         </div>
-        <button
-          onClick={() => setShowRentalModal(true)}
-          className="inline-flex items-center gap-2 bg-primary text-white font-bold py-2.5 px-5 rounded-lg shadow-md hover:bg-primary/90 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Apply for New Unit
-        </button>
+        {/* ✅ REMOVED: "Apply for New Unit" button. This action belongs in the Marketplace module. */}
       </div>
 
-      {/* ✅ 1. KPI SUMMARY DASHBOARD */}
+      {/* 1. KPI SUMMARY DASHBOARD */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
           <p className="text-xs text-slate-500 uppercase font-bold">Active Tenancies</p>
@@ -147,7 +128,7 @@ export default function TenantApplicationsPage() {
         </div>
       </div>
 
-      {/* ✅ 2. ACTIVE TENANCIES (Enriched Cards) */}
+      {/* 2. ACTIVE TENANCIES */}
       <div>
         <h2 className="text-lg font-bold text-slate-800 mb-4">My Active Tenancies</h2>
         <p className="text-xs text-slate-500 mb-4">
@@ -291,7 +272,7 @@ export default function TenantApplicationsPage() {
         </div>
       </div>
 
-      {/* 4. PAST APPLICATIONS (Historical Record) */}
+      {/* 4. PAST APPLICATIONS */}
       {pastApps.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="p-6 border-b border-slate-100">
@@ -338,15 +319,13 @@ export default function TenantApplicationsPage() {
       )}
 
       {/* Modals */}
-      {/* ✅ UPDATED: Separated simple closing from success-based background refreshing */}
-      {showRentalModal && <RentalApplicationModal onClose={closeModal} onComplete={handleModalSuccess} />}
+      {/* ✅ Removed RentalApplicationModal render */}
       {transferTarget && <TransferRequestModal tenancy={transferTarget} onClose={closeModal} onComplete={handleModalSuccess} />}
       {noticeTarget && <NoticeToVacateModal tenancy={noticeTarget} onClose={closeModal} onComplete={handleModalSuccess} />}
     </div>
   );
 }
 
-// Status Badge Component
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     pending: "bg-yellow-100 text-yellow-700",

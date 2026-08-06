@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css"; // Ensure your tailwind/css file is imported here
+import "./globals.css"; 
 import MainLayoutWrapper from "@/components/layouts/MainLayoutWrapper";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Tennacy | Unified Property Management & Marketplace",
@@ -17,11 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased`}>
-        {/* 
-          This wrapper handles the Navbar, Footer, and Wizard-hiding logic globally.
-          Every page inside {children} is now automatically wrapped by it.
-        */}
+      {/* ✅ REMOVED: next/font/google to fix the Turbopack build crash */}
+      <body className="font-sans antialiased">
+        {/* Your global wrapper remains perfectly intact */}
         <MainLayoutWrapper>
           {children}
         </MainLayoutWrapper>
