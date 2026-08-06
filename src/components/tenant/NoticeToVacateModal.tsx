@@ -1,17 +1,20 @@
 "use client";
 
 import React, { useState } from "react";
-import { tenantOperationsApi } from "@/api/tenantOperations";
-import { PersonalTenancy } from "@/api/tenantDashboard.api";
+import apiClient from "@/api/axios";
+import { endpoints } from "@/config/endpoints";
+import { PersonalTenancy } from "@/api/tenancies.api"; // Ensure this matches your consolidated API file
 
 interface NoticeToVacateModalProps {
   tenancy: PersonalTenancy;
   onClose: () => void;
+  onComplete?: () => void; // Added to refresh the parent page data
 }
 
 export default function NoticeToVacateModal({
   tenancy,
   onClose,
+  onComplete,
 }: NoticeToVacateModalProps) {
   // Default to 30 days from now (standard notice period)
   const defaultDate = new Date();
@@ -20,38 +23,51 @@ export default function NoticeToVacateModal({
 
   const [moveOutDate, setMoveOutDate] = useState(formattedDate);
   const [reason, setReason] = useState("");
+  const [forwardingAddress, setForwardingAddress] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSubmit = async () => {
-    if (!reason.trim()) return alert("Please provide a reason for vacating.");
+    if (!moveOutDate) return setError("Please select your intended move-out date.");
+    if (!reason.trim()) return setError("Please provide a reason for vacating.");
+    
     if (
       !confirm(
         "⚠️ Are you sure you want to submit a formal Notice to Vacate? This will initiate the move-out process and deposit inspection.",
       )
-    )
-      return;
+    ) return;
 
     setIsSubmitting(true);
+    setError("");
+
     try {
-      await tenantOperationsApi.submitNoticeToVacate(
-        tenancy.id,
-        moveOutDate,
-        reason,
-      );
-      alert(
-        "✅ Notice to Vacate submitted successfully. The management will contact you regarding the move-out inspection.",
-      );
+      // Submit to the unified Applications endpoint
+      await apiClient.post(endpoints.APPLICATIONS.LIST, {
+        application_type: "termination",
+        termination_type: "tenant_request", // Explicitly set for tenant-initiated notices
+        intended_vacate_date: moveOutDate,
+        reason_for_leaving: reason,
+        forwarding_address: forwardingAddress,
+      });
+
+      alert("✅ Notice to Vacate submitted successfully! Your landlord/agency will review it and contact you regarding the move-out inspection.");
+      if (onComplete) onComplete();
       onClose();
-    } catch (error) {
-      alert("Failed to submit notice.");
+    } catch (err: any) {
+      const errors = err.response?.data 
+        ? Object.entries(err.response.data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join(" | ")
+        : err.message;
+      setError(errors || "Failed to submit notice.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const today = new Date().toISOString().split("T")[0];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-red-50">
           <div>
             <h2 className="text-xl font-bold text-red-800">Notice to Vacate</h2>
@@ -59,58 +75,81 @@ export default function NoticeToVacateModal({
               Terminating: {tenancy.property_name} - Unit {tenancy.unit_code}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">✕</button>
         </div>
-        <div className="p-6 space-y-5">
+        
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-800">
-            <strong>⚠️ Legal Notice:</strong> Submitting this notice starts your
-            contractual notice period. Ensure you have cleared all arrears and
-            prepared the unit for the final move-out inspection to guarantee
-            your deposit refund.
+            <strong>⚠️ Legal Notice:</strong> Submitting this notice starts your contractual notice period. Ensure you have cleared all arrears and prepared the unit for the final move-out inspection to guarantee your deposit refund.
           </div>
+          
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Proposed Move-Out Date
+              Proposed Move-Out Date <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
               value={moveOutDate}
               onChange={(e) => setMoveOutDate(e.target.value)}
-              min={new Date().toISOString().split("T")[0]}
+              min={today}
               className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
             />
           </div>
+          
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Reason for Leaving
+              Reason for Leaving <span className="text-red-500">*</span>
             </label>
             <textarea
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="e.g., Relocating for work, lease ending..."
+              placeholder="e.g., Relocating for work, lease ending, purchased a home..."
               className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none"
             />
           </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+              Forwarding Address
+            </label>
+            <input
+              type="text"
+              value={forwardingAddress}
+              onChange={(e) => setForwardingAddress(e.target.value)}
+              placeholder="Address for deposit refund or future mail (Optional)"
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none"
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
         </div>
+        
         <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-6 py-2.5 text-slate-600 font-medium"
+            disabled={isSubmitting}
+            className="px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-200 rounded-lg disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSubmit}
-            disabled={isSubmitting}
-            className="px-8 py-2.5 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 disabled:opacity-50"
+            disabled={isSubmitting || !moveOutDate || !reason.trim()}
+            className="px-8 py-2.5 bg-red-600 text-white font-bold rounded-lg shadow-md hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
           >
-            {isSubmitting ? "Submitting Notice..." : "Submit Formal Notice"}
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Submitting...
+              </>
+            ) : (
+              "Submit Formal Notice"
+            )}
           </button>
         </div>
       </div>

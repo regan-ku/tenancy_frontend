@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { tenantOperationsApi } from "@/api/tenantOperations";
+import { tenantOperationsApi } from "@/api/tenantOperations.api";
 
 interface RentalApplicationModalProps {
   preSelectedUnitId?: number;
