@@ -17,6 +17,10 @@ interface MediaUploadZoneProps {
   progress?: number;
   isUploading?: boolean;
   results?: UploadResult[];
+  categoryId: string;
+  activeCategory: string | null;
+  resultsCategory: string | null;
+  onDeleteExisting?: (serverId: number) => Promise<boolean>; 
 }
 
 export default function MediaUploadZone({
@@ -33,11 +37,21 @@ export default function MediaUploadZone({
   progress = 0,
   isUploading = false,
   results = [],
+  categoryId,
+  activeCategory,
+  resultsCategory,
+  onDeleteExisting,
 }: MediaUploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const isFull = tasks.length >= maxFiles;
+  
+  // ✅ Only count newly staged (unuploaded) files for limits and UI rendering
+  const stagedTasks = tasks.filter(t => !t.serverId);
+  const isFull = stagedTasks.length >= maxFiles;
 
-  // Calculate circumference for circular progress animation
+  const isCurrentlyUploading = isUploading && activeCategory === categoryId;
+  const zoneResults = resultsCategory === categoryId ? results : [];
+  const failedResults = zoneResults.filter((r) => !r.success);
+
   const radius = 24;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
@@ -46,7 +60,7 @@ export default function MediaUploadZone({
     if (!e.target.files) return;
 
     const files = Array.from(e.target.files);
-    const remainingSlots = maxFiles - tasks.length;
+    const remainingSlots = maxFiles - stagedTasks.length;
     const filesToAdd = files.slice(0, remainingSlots);
 
     if (files.length > remainingSlots) {
@@ -69,39 +83,21 @@ export default function MediaUploadZone({
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  // Filter out only the failed results to show specific errors
-  const failedResults = results.filter((r) => !r.success);
-
   // ==========================================
-  // ✅ STATE 1: UPLOAD COMPLETE (Clean Success Card)
+  // ✅ STATE 1: UPLOAD COMPLETE (Compact Success Banner)
   // ==========================================
-  if (isUploaded) {
+  if (isUploaded && stagedTasks.length === 0) {
     return (
       <div className="space-y-3">
-        <div className="flex justify-between items-end">
+        <div className="flex justify-between items-center">
           <div>
             <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
             {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
           </div>
-        </div>
-        <div className="border border-green-200 bg-green-50/50 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0 ring-4 ring-green-50">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-bold text-green-800">Upload Complete</p>
-              <p className="text-xs text-green-700 mt-1">
-                {uploadedCount} file(s) successfully uploaded and saved to the server.
-              </p>
-            </div>
-          </div>
           {onEdit && (
             <button
               onClick={onEdit}
-              className="px-5 py-2.5 bg-white border border-green-300 text-green-700 text-sm font-semibold rounded-lg hover:bg-green-100 hover:border-green-400 transition-all shadow-sm flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-green-300 text-green-700 text-xs font-semibold rounded-lg hover:bg-green-50 transition-all shadow-sm flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path>
@@ -109,6 +105,12 @@ export default function MediaUploadZone({
               Edit / Add More
             </button>
           )}
+        </div>
+        <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+          </svg>
+          <span>{uploadedCount} file(s) successfully saved.</span>
         </div>
       </div>
     );
@@ -125,18 +127,18 @@ export default function MediaUploadZone({
           {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
         </div>
         <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${isFull ? 'bg-slate-100 text-slate-500' : 'bg-blue-50 text-blue-700'}`}>
-          {tasks.length} / {maxFiles}
+          {stagedTasks.length} / {maxFiles} New
         </span>
       </div>
 
-      {/* ✅ SPECIFIC ERROR MESSAGES (Only shows if some files failed) */}
+      {/* ✅ SPECIFIC ERROR MESSAGES (Isolated to this zone) */}
       {failedResults.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
           <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            {failedResults.length} file(s) failed to upload:
+            Upload paused: {failedResults.length} file(s) failed.
           </p>
           <ul className="text-xs text-red-600 space-y-1 pl-5 list-disc">
             {failedResults.map((res, idx) => (
@@ -145,37 +147,17 @@ export default function MediaUploadZone({
               </li>
             ))}
           </ul>
+          <p className="text-[11px] text-red-500 italic mt-1">Remove the failed file(s) from the staging area below and click upload again to continue.</p>
         </div>
       )}
 
-      {/* ✅ CIRCULAR PROGRESS LOADER */}
-      {isUploading && (
+      {/* ✅ CIRCULAR PROGRESS LOADER (Only shows for the active zone) */}
+      {isCurrentlyUploading && (
         <div className="flex flex-col items-center justify-center py-8 bg-slate-50 rounded-xl border border-slate-200 border-dashed">
           <div className="relative w-16 h-16 mb-3">
-            {/* Background circle */}
             <svg className="w-16 h-16 transform -rotate-90">
-              <circle
-                cx="32"
-                cy="32"
-                r={radius}
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="transparent"
-                className="text-slate-200"
-              />
-              {/* Animated progress circle */}
-              <circle
-                cx="32"
-                cy="32"
-                r={radius}
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="transparent"
-                strokeDasharray={circumference}
-                strokeDashoffset={strokeDashoffset}
-                strokeLinecap="round"
-                className="text-primary transition-all duration-500 ease-out"
-              />
+              <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-200" />
+              <circle cx="32" cy="32" r={radius} stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={circumference} strokeDashoffset={strokeDashoffset} strokeLinecap="round" className="text-primary transition-all duration-500 ease-out" />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-xs font-bold text-slate-700">{progress}%</span>
@@ -186,8 +168,8 @@ export default function MediaUploadZone({
         </div>
       )}
 
-      {/* ✅ DRAG & DROP ZONE (Hidden while uploading) */}
-      {!isUploading && (
+      {/* ✅ DRAG & DROP ZONE (Hidden while THIS zone is uploading) */}
+      {!isCurrentlyUploading && (
         <div
           onClick={() => !isFull && inputRef.current?.click()}
           className={`border-2 border-dashed rounded-xl p-6 text-center transition-all duration-200 ${
@@ -213,7 +195,7 @@ export default function MediaUploadZone({
             </div>
             <p className="text-sm text-slate-600">
               {isFull ? (
-                <span className="text-slate-400 font-medium">Maximum files reached</span>
+                <span className="text-slate-400 font-medium">Maximum new files reached</span>
               ) : (
                 <>Click to <span className="text-primary font-semibold">browse</span> or drag and drop</>
               )}
@@ -223,14 +205,16 @@ export default function MediaUploadZone({
         </div>
       )}
 
-      {/* ✅ PREVIEW GRID (Hidden while uploading) */}
-      {tasks.length > 0 && !isUploading && (
+      {/* ✅ PREVIEW GRID (ONLY shows newly staged files, hides server files) */}
+      {stagedTasks.length > 0 && !isCurrentlyUploading && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {tasks.map((task) => (
+          {stagedTasks.map((task) => (
             <div key={task.id} className="relative group aspect-square bg-slate-100 rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-              {task.file.type.startsWith("image/") ? (
+              
+              {/* Render Local File Only */}
+              {task.file && task.file.type.startsWith("image/") ? (
                 <img src={URL.createObjectURL(task.file)} alt="Preview" className="w-full h-full object-cover" />
-              ) : task.file.type.startsWith("video/") ? (
+              ) : task.file && task.file.type.startsWith("video/") ? (
                 <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800 text-white">
                   <span className="text-3xl mb-1">🎥</span>
                   <span className="text-[10px] text-slate-300 truncate px-2">{task.file.name}</span>
@@ -240,7 +224,7 @@ export default function MediaUploadZone({
                   <svg className="w-8 h-8 mb-1 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                   </svg>
-                  <span className="text-[10px] text-center truncate w-full">{task.file.name}</span>
+                  <span className="text-[10px] text-center truncate w-full">{task.file?.name || "Document"}</span>
                 </div>
               )}
               

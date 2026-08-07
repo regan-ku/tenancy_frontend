@@ -3,14 +3,14 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useApplicationWizardStore } from "@/store/applicationWizard.store";
-import { useAuthStore } from "@/store/auth.store"; // ✅ Import Auth Store
+import { useAuthStore } from "@/store/auth.store";
 import { propertiesApi } from "@/api/properties.api";
 
 export default function StepApplicationDetails() {
   const searchParams = useSearchParams();
   const isManagerMode = searchParams.get("mode") === "manager";
 
-  const { user } = useAuthStore(); // ✅ Get logged-in user data
+  const { user } = useAuthStore();
   const { applicationType, formData, updateFormData, showStepValidation } =
     useApplicationWizardStore();
 
@@ -19,7 +19,7 @@ export default function StepApplicationDetails() {
   const [isLoadingUnits, setIsLoadingUnits] = useState(false);
   const [floorError, setFloorError] = useState<string | null>(null);
 
-  // ✅ FIX: Auto-populate formData with logged-in user's details if not in manager mode
+  // Auto-populate formData with logged-in user's details if not in manager mode
   useEffect(() => {
     if (!isManagerMode && user) {
       const updates: any = {};
@@ -33,7 +33,6 @@ export default function StepApplicationDetails() {
         updates.email = user.email;
       }
 
-      // Only update if we actually found missing fields to fill
       if (Object.keys(updates).length > 0) {
         updateFormData(updates);
       }
@@ -90,17 +89,25 @@ export default function StepApplicationDetails() {
     const fetchUnits = async () => {
       if (!formData.propertyId || !formData.unitGroupId) return;
 
+      // ✅ DEBUG: Log to ensure the wizard actually received the IDs from the marketplace
+      console.log("Fetching units for Property:", formData.propertyId, "Group:", formData.unitGroupId);
+
       setIsLoadingUnits(true);
       try {
         const response = await propertiesApi.getUnits(formData.propertyId);
-        const allUnits = response.results || [];
+        
+        // ✅ FIX 1: Handle unpaginated responses. 
+        // Because your UnitViewSet has `pagination_class = None`, 
+        // DRF returns a direct array `[]`, NOT an object with `.results`.
+        const allUnits = Array.isArray(response) ? response : (response.results || []);
 
-        const units = allUnits.filter(
-          (u: any) =>
-            (u.unit_group === formData.unitGroupId ||
-              u.unit_group_id === formData.unitGroupId) &&
-            u.status === "available",
-        );
+        // ✅ FIX 2: Force string comparison to prevent "1" !== 1 type mismatches
+        const targetGroupId = String(formData.unitGroupId);
+
+        const units = allUnits.filter((u: any) => {
+          const groupId = String(u.unit_group || u.unit_group_id);
+          return groupId === targetGroupId && u.status === "available";
+        });
 
         setAvailableUnits(units);
 
@@ -110,10 +117,10 @@ export default function StepApplicationDetails() {
 
         setAvailableFloors(floors);
 
-        // ✅ FIX: If in Manager Mode, the unit is already selected.
+        // If in Manager Mode, the unit is already selected.
         if (isManagerMode && formData.target_unit_id) {
           const selectedUnit = units.find(
-            (u) => u.id === formData.target_unit_id,
+            (u) => String(u.id) === String(formData.target_unit_id),
           );
           if (selectedUnit && !formData.target_unit_code) {
             updateFormData({
@@ -262,7 +269,7 @@ export default function StepApplicationDetails() {
               🏢 Unit & Floor Preference
             </h3>
 
-            {/* ✅ NEW: MANAGER MODE READ-ONLY UNIT DISPLAY */}
+            {/* MANAGER MODE READ-ONLY UNIT DISPLAY */}
             {isManagerMode && formData.target_unit_id ? (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <p className="text-xs text-green-700 font-semibold mb-1">

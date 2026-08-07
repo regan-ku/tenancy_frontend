@@ -4,11 +4,12 @@ import React, { useState, useEffect } from "react";
 import { usePropertyWizardStore } from "@/store/propertyWizard.store";
 import { useMediaUpload, UploadTask } from "@/hooks/useMediaUpload";
 import MediaUploadZone from "@/components/properties/wizard/MediaUploadZone";
+import { propertiesApi } from "@/api/properties.api";
 
 export default function StepMedia() {
   const { propertyId, formData } = usePropertyWizardStore();
   
-  const { isUploading, progress, results, uploadCategory } = useMediaUpload(propertyId);
+  const { isUploading, progress, results, resultsCategory, uploadCategory, activeCategory } = useMediaUpload(propertyId);
 
   const [propertyMedia, setPropertyMedia] = useState<UploadTask[]>([]);
   const [unitGroupMedia, setUnitGroupMedia] = useState<Record<string, UploadTask[]>>({});
@@ -18,17 +19,111 @@ export default function StepMedia() {
   const [uploadedUnitGroups, setUploadedUnitGroups] = useState<Set<string>>(new Set());
   const [isDocsUploaded, setIsDocsUploaded] = useState(false);
 
-  const [propertyMediaCount, setPropertyMediaCount] = useState(0);
+  const [propertyCoverCount, setPropertyCoverCount] = useState(0);
+  const [propertyGalleryCount, setPropertyGalleryCount] = useState(0);
+  
+  const [unitGroupCoverCounts, setUnitGroupCoverCounts] = useState<Record<string, number>>({});
+  const [unitGroupGalleryCounts, setUnitGroupGalleryCounts] = useState<Record<string, number>>({});
+  
   const [docsCount, setDocsCount] = useState(0);
-  const [unitGroupCounts, setUnitGroupCounts] = useState<Record<string, number>>({});
+  
+  const [isLoadingExisting, setIsLoadingExisting] = useState(true);
 
   useEffect(() => {
-    const initial: Record<string, UploadTask[]> = {};
-    formData.unit_groups.forEach((ug) => {
-      if (ug.id) initial[ug.id] = [];
-    });
-    setUnitGroupMedia((prev) => ({ ...initial, ...prev }));
-  }, [formData.unit_groups]);
+    const fetchExistingMedia = async () => {
+      if (!propertyId) return;
+      setIsLoadingExisting(true);
+      try {
+        const mediaResponse = await propertiesApi.getPropertyMedia(propertyId);
+        const allMedia = mediaResponse.results || [];
+
+        const propertyDetails = await propertiesApi.getProperty(propertyId);
+        const propertyCoverUrl = propertyDetails.cover_photo;
+
+        const ugResponse = await propertiesApi.getUnitGroups(propertyId);
+        const unitGroups = ugResponse.results || [];
+        const ugCoverUrls: Record<number, string> = {};
+        unitGroups.forEach(ug => {
+          if (ug.id && ug.cover_photo) ugCoverUrls[ug.id] = ug.cover_photo;
+        });
+
+        const getFileName = (url: string | null | undefined) => {
+          if (!url) return "";
+          return url.split('/').pop()?.split('?')[0] || "";
+        };
+
+        const mappedMedia: UploadTask[] = allMedia.map(m => {
+          const fileUrl = m.file || m.url || "";
+          const mediaFileName = getFileName(fileUrl);
+          const propCoverFileName = getFileName(propertyCoverUrl);
+          const ugCoverFileName = m.unit_group ? getFileName(ugCoverUrls[m.unit_group]) : "";
+
+          let isCover = false;
+          if (!m.unit_group && propCoverFileName && mediaFileName === propCoverFileName) {
+            isCover = true;
+          } else if (m.unit_group && ugCoverFileName && mediaFileName === ugCoverFileName) {
+            isCover = true;
+          }
+
+          return {
+            id: String(m.id),
+            serverId: m.id,
+            url: fileUrl,
+            media_type: m.media_type,
+            caption: m.caption || "",
+            is_cover: isCover,
+            unit_group_id: m.unit_group,
+            isUploaded: true,
+          };
+        });
+
+        const propCover = mappedMedia.find(m => !m.unit_group_id && m.is_cover);
+        const propGallery = mappedMedia.filter(m => !m.unit_group_id && !m.is_cover && m.media_type !== 'document');
+        
+        setPropertyCoverCount(propCover ? 1 : 0);
+        setPropertyGalleryCount(propGallery.length);
+        if (propCover || propGallery.length > 0) setIsPropertyMediaUploaded(true);
+
+        const ownershipDocsList = mappedMedia.filter(m => m.media_type === 'document' && !m.unit_group_id);
+        setDocsCount(ownershipDocsList.length);
+        if (ownershipDocsList.length > 0) setIsDocsUploaded(true);
+
+        const initialUgCoverCounts: Record<string, number> = {};
+        const initialUgGalleryCounts: Record<string, number> = {};
+        const initialUploadedUgs = new Set<string>();
+
+        const groups = formData.unit_groups.length > 0 ? formData.unit_groups : unitGroups;
+
+        groups.forEach(ug => {
+          if (ug.id) {
+            // ✅ FIX: Force string conversion for dictionary keys and Sets
+            const ugIdStr = String(ug.id); 
+            
+            const ugCover = mappedMedia.find(m => m.unit_group_id === ug.id && m.is_cover);
+            const ugGallery = mappedMedia.filter(m => m.unit_group_id === ug.id && !m.is_cover);
+            
+            initialUgCoverCounts[ugIdStr] = ugCover ? 1 : 0;
+            initialUgGalleryCounts[ugIdStr] = ugGallery.length;
+            
+            if (ugCover || ugGallery.length > 0) {
+              initialUploadedUgs.add(ugIdStr);
+            }
+          }
+        });
+        
+        setUnitGroupCoverCounts(initialUgCoverCounts);
+        setUnitGroupGalleryCounts(initialUgGalleryCounts);
+        setUploadedUnitGroups(initialUploadedUgs);
+
+      } catch (e) {
+        console.error("Failed to fetch existing media", e);
+      } finally {
+        setIsLoadingExisting(false);
+      }
+    };
+
+    fetchExistingMedia();
+  }, [propertyId]);
 
   const handleSetPropertyCover = (task: UploadTask) => {
     const currentCover = propertyMedia.find(t => t.is_cover);
@@ -57,25 +152,27 @@ export default function StepMedia() {
     setUnitGroupMedia(prev => ({ ...prev, [ugId]: [newCover, ...galleryItems] }));
   };
 
-  // ✅ UPDATED: Handles partial successes gracefully
   const handleUploadPropertyMedia = async () => {
     if (propertyMedia.length === 0) return;
     
-    const summary = await uploadCategory(propertyMedia);
+    const coverTasks = propertyMedia.filter(t => t.is_cover);
+    const galleryTasks = propertyMedia.filter(t => !t.is_cover);
     
-    if (summary.successCount > 0) {
-      setPropertyMediaCount(prev => prev + summary.successCount);
-      
-      // Keep ONLY the failed files in the staging area
+    const summary = await uploadCategory('property_media', propertyMedia);
+    
+    if (summary.successCount > 0 || summary.aborted) {
       const successfulFileNames = summary.results.filter(r => r.success).map(r => r.fileName);
-      const failedTasks = propertyMedia.filter(t => !successfulFileNames.includes(t.file.name));
       
-      setPropertyMedia(failedTasks);
+      const successfulCovers = coverTasks.filter(t => successfulFileNames.includes(t.file?.name || "")).length;
+      const successfulGalleries = galleryTasks.filter(t => successfulFileNames.includes(t.file?.name || "")).length;
       
-      // If ALL files succeeded, show the "Upload Complete" card
-      if (failedTasks.length === 0) {
-        setIsPropertyMediaUploaded(true);
-      }
+      setPropertyCoverCount(prev => prev + successfulCovers);
+      setPropertyGalleryCount(prev => prev + successfulGalleries);
+      
+      const remainingTasks = propertyMedia.filter(t => !successfulFileNames.includes(t.file?.name || ""));
+      setPropertyMedia(remainingTasks);
+      
+      if (remainingTasks.length === 0) setIsPropertyMediaUploaded(true);
     }
   };
 
@@ -83,48 +180,45 @@ export default function StepMedia() {
     const tasks = unitGroupMedia[ugId] || [];
     if (tasks.length === 0) return;
     
-    const summary = await uploadCategory(tasks);
+    const coverTasks = tasks.filter(t => t.is_cover);
+    const galleryTasks = tasks.filter(t => !t.is_cover);
     
-    if (summary.successCount > 0) {
-      setUnitGroupCounts(prev => ({
-        ...prev,
-        [ugId]: (prev[ugId] || 0) + summary.successCount
-      }));
-      
+    const summary = await uploadCategory(`ug_${ugId}`, tasks);
+    
+    if (summary.successCount > 0 || summary.aborted) {
       const successfulFileNames = summary.results.filter(r => r.success).map(r => r.fileName);
-      const failedTasks = tasks.filter(t => !successfulFileNames.includes(t.file.name));
       
-      setUnitGroupMedia(prev => ({ ...prev, [ugId]: failedTasks }));
+      const successfulCovers = coverTasks.filter(t => successfulFileNames.includes(t.file?.name || "")).length;
+      const successfulGalleries = galleryTasks.filter(t => successfulFileNames.includes(t.file?.name || "")).length;
       
-      if (failedTasks.length === 0) {
-        setUploadedUnitGroups((prev) => new Set(prev).add(ugId));
-      }
+      setUnitGroupCoverCounts(prev => ({ ...prev, [ugId]: (prev[ugId] || 0) + successfulCovers }));
+      setUnitGroupGalleryCounts(prev => ({ ...prev, [ugId]: (prev[ugId] || 0) + successfulGalleries }));
+      
+      const remainingTasks = tasks.filter(t => !successfulFileNames.includes(t.file?.name || ""));
+      setUnitGroupMedia(prev => ({ ...prev, [ugId]: remainingTasks }));
+      
+      if (remainingTasks.length === 0) setUploadedUnitGroups((prev) => new Set(prev).add(ugId));
     }
   };
 
   const handleUploadDocs = async () => {
     if (ownershipDocs.length === 0) return;
+    const summary = await uploadCategory('ownership_docs', ownershipDocs);
     
-    const summary = await uploadCategory(ownershipDocs);
-    
-    if (summary.successCount > 0) {
-      setDocsCount(prev => prev + summary.successCount);
-      
+    if (summary.successCount > 0 || summary.aborted) {
       const successfulFileNames = summary.results.filter(r => r.success).map(r => r.fileName);
-      const failedTasks = ownershipDocs.filter(t => !successfulFileNames.includes(t.file.name));
+      const successfulDocs = ownershipDocs.filter(t => successfulFileNames.includes(t.file?.name || "")).length;
       
-      setOwnershipDocs(failedTasks);
+      setDocsCount(prev => prev + successfulDocs);
       
-      if (failedTasks.length === 0) {
-        setIsDocsUploaded(true);
-      }
+      const remainingTasks = ownershipDocs.filter(t => !successfulFileNames.includes(t.file?.name || ""));
+      setOwnershipDocs(remainingTasks);
+      
+      if (remainingTasks.length === 0) setIsDocsUploaded(true);
     }
   };
 
-  const handleEditPropertyMedia = () => {
-    setIsPropertyMediaUploaded(false);
-  };
-
+  const handleEditPropertyMedia = () => setIsPropertyMediaUploaded(false);
   const handleEditUnitGroupMedia = (ugId: string) => {
     setUploadedUnitGroups((prev) => {
       const newSet = new Set(prev);
@@ -132,31 +226,31 @@ export default function StepMedia() {
       return newSet;
     });
   };
+  const handleEditDocs = () => setIsDocsUploaded(false);
 
-  const handleEditDocs = () => {
-    setIsDocsUploaded(false);
-  };
+  if (isLoadingExisting) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-primary-dark mb-2">
-          Media & Ownership Documents
-        </h2>
-        <p className="text-slate-500">
-          Upload property visuals and mandatory legal documents. You can promote any gallery photo to be the cover.
-        </p>
+        <h2 className="text-2xl font-bold text-primary-dark mb-2">Media & Ownership Documents</h2>
+        <p className="text-slate-500">Upload property visuals and mandatory legal documents. You can promote any gallery photo to be the cover.</p>
       </div>
 
       {/* 1. Main Property Media */}
       <section className="space-y-4 p-5 bg-white border border-slate-200 rounded-xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-primary-dark flex items-center gap-2">
-            🏠 Main Property Media
-          </h3>
-        </div>
+        <h3 className="text-lg font-bold text-primary-dark flex items-center gap-2">🏠 Main Property Media</h3>
         
         <MediaUploadZone
+          categoryId="property_media_cover"
+          activeCategory={activeCategory}
+          resultsCategory={resultsCategory}
           title="Property Cover Photo (Required)"
           description="This will be the main thumbnail on the marketplace."
           accept="image/*"
@@ -168,14 +262,17 @@ export default function StepMedia() {
           }}
           maxFiles={1}
           isUploaded={isPropertyMediaUploaded}
-          uploadedCount={propertyMediaCount}
+          uploadedCount={propertyCoverCount}
           onEdit={handleEditPropertyMedia}
           progress={progress}
           isUploading={isUploading}
-          results={results} // ✅ PASSED FOR SPECIFIC ERROR MESSAGES
+          results={results}
         />
 
         <MediaUploadZone
+          categoryId="property_media_gallery"
+          activeCategory={activeCategory}
+          resultsCategory={resultsCategory}
           title="Property Gallery"
           description="Additional photos, videos, floor plans. Hover to set as cover."
           tasks={propertyMedia.filter(t => !t.is_cover)}
@@ -187,21 +284,20 @@ export default function StepMedia() {
           maxFiles={10}
           onSetAsCover={handleSetPropertyCover}
           isUploaded={isPropertyMediaUploaded}
-          uploadedCount={propertyMediaCount}
+          uploadedCount={propertyGalleryCount}
           onEdit={handleEditPropertyMedia}
           progress={progress}
           isUploading={isUploading}
-          results={results} // ✅ PASSED FOR SPECIFIC ERROR MESSAGES
+          results={results}
         />
 
-        {/* Show upload button only if not fully uploaded yet */}
         {!isPropertyMediaUploaded && propertyMedia.length > 0 && (
           <button
             onClick={handleUploadPropertyMedia}
             disabled={isUploading}
             className="w-full btn-primary py-2 text-sm font-semibold disabled:opacity-70"
           >
-            {isUploading ? `Uploading... ${progress}%` : "Upload Property Media"}
+            {isUploading && activeCategory === 'property_media' ? `Uploading... ${progress}%` : "Upload Property Media"}
           </button>
         )}
       </section>
@@ -209,69 +305,71 @@ export default function StepMedia() {
       {/* 2. Dynamic Unit Group Media Sections */}
       {formData.unit_groups.length > 0 && (
         <section className="space-y-6 p-5 bg-white border border-slate-200 rounded-xl">
-          <h3 className="text-lg font-bold text-primary-dark flex items-center gap-2">
-            🏢 Unit Group Media
-          </h3>
+          <h3 className="text-lg font-bold text-primary-dark flex items-center gap-2">🏢 Unit Group Media</h3>
           {formData.unit_groups.map((ug) => {
-            const isUploaded = uploadedUnitGroups.has(ug.id!);
-            const tasks = unitGroupMedia[ug.id!] || [];
-            const count = unitGroupCounts[ug.id!] || 0;
+            // ✅ FIX: Force string conversion for safe dictionary/set access
+            const ugIdStr = String(ug.id!);
+            const isUploaded = uploadedUnitGroups.has(ugIdStr);
+            const tasks = unitGroupMedia[ugIdStr] || [];
+            const catId = `ug_${ugIdStr}`;
             
             return (
               <div key={ug.id} className="border-t border-slate-100 pt-4 first:border-t-0 first:pt-0">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-slate-700">
-                    {ug.name} ({ug.unit_type.replace(/_/g, " ")})
-                  </h4>
-                </div>
+                <h4 className="font-semibold text-slate-700 mb-3">{ug.name} ({ug.unit_type.replace(/_/g, " ")})</h4>
                 
                 <div className="mb-3">
                   <MediaUploadZone
+                    categoryId={`${catId}_cover`}
+                    activeCategory={activeCategory}
+                    resultsCategory={resultsCategory}
                     title="Unit Group Cover Photo"
                     accept="image/*"
                     tasks={tasks.filter(t => t.is_cover)}
                     onUpdate={(newTasks) => {
                       const nonCovers = tasks.filter(t => !t.is_cover);
-                      const marked = newTasks.map(t => ({ ...t, is_cover: true, unit_group_id: Number(ug.id) }));
-                      setUnitGroupMedia(prev => ({ ...prev, [ug.id!]: [...marked, ...nonCovers] }));
+                      const marked = newTasks.map(t => ({ ...t, is_cover: true, unit_group_id: Number(ugIdStr) }));
+                      setUnitGroupMedia(prev => ({ ...prev, [ugIdStr]: [...marked, ...nonCovers] }));
                     }}
                     maxFiles={1}
                     isUploaded={isUploaded}
-                    uploadedCount={count}
-                    onEdit={() => handleEditUnitGroupMedia(ug.id!)}
+                    uploadedCount={unitGroupCoverCounts[ugIdStr] || 0}
+                    onEdit={() => handleEditUnitGroupMedia(ugIdStr)}
                     progress={progress}
                     isUploading={isUploading}
-                    results={results} // ✅ PASSED FOR SPECIFIC ERROR MESSAGES
+                    results={results}
                   />
                 </div>
 
                 <div className="mb-3">
                   <MediaUploadZone
+                    categoryId={`${catId}_gallery`}
+                    activeCategory={activeCategory}
+                    resultsCategory={resultsCategory}
                     title="Unit Group Gallery"
                     tasks={tasks.filter(t => !t.is_cover)}
                     onUpdate={(newTasks) => {
                       const covers = tasks.filter(t => t.is_cover);
-                      const marked = newTasks.map(t => ({ ...t, is_cover: false, unit_group_id: Number(ug.id) }));
-                      setUnitGroupMedia(prev => ({ ...prev, [ug.id!]: [...covers, ...marked] }));
+                      const marked = newTasks.map(t => ({ ...t, is_cover: false, unit_group_id: Number(ugIdStr) }));
+                      setUnitGroupMedia(prev => ({ ...prev, [ugIdStr]: [...covers, ...marked] }));
                     }}
                     maxFiles={10}
-                    onSetAsCover={(task) => handleSetUnitGroupCover(ug.id!, task)}
+                    onSetAsCover={(task) => handleSetUnitGroupCover(ugIdStr, task)}
                     isUploaded={isUploaded}
-                    uploadedCount={count}
-                    onEdit={() => handleEditUnitGroupMedia(ug.id!)}
+                    uploadedCount={unitGroupGalleryCounts[ugIdStr] || 0}
+                    onEdit={() => handleEditUnitGroupMedia(ugIdStr)}
                     progress={progress}
                     isUploading={isUploading}
-                    results={results} // ✅ PASSED FOR SPECIFIC ERROR MESSAGES
+                    results={results}
                   />
                 </div>
 
                 {!isUploaded && tasks.length > 0 && (
                   <button
-                    onClick={() => handleUploadUnitGroupMedia(ug.id!)}
+                    onClick={() => handleUploadUnitGroupMedia(ugIdStr)}
                     disabled={isUploading}
                     className="w-full md:w-auto px-4 py-2 bg-slate-800 text-white text-sm font-semibold rounded-lg hover:bg-slate-700 disabled:opacity-70"
                   >
-                    {isUploading ? `Uploading... ${progress}%` : `Upload ${ug.name} Media`}
+                    {isUploading && activeCategory === catId ? `Uploading... ${progress}%` : `Upload ${ug.name} Media`}
                   </button>
                 )}
               </div>
@@ -282,18 +380,15 @@ export default function StepMedia() {
 
       {/* 3. MANDATORY: Ownership & Legal Documents */}
       <section className="space-y-4 p-5 bg-amber-50 border-2 border-amber-200 rounded-xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-amber-800 flex items-center gap-2">
-              📜 Proof of Ownership & Legal Documents (MUST)
-            </h3>
-            <p className="text-sm text-amber-700 mt-1">
-              Title deeds, land rates, KRA compliance, or business registration certificates.
-            </p>
-          </div>
+        <div>
+          <h3 className="text-lg font-bold text-amber-800 flex items-center gap-2">📜 Proof of Ownership & Legal Documents (MUST)</h3>
+          <p className="text-sm text-amber-700 mt-1">Title deeds, land rates, KRA compliance, or business registration certificates.</p>
         </div>
         
         <MediaUploadZone
+          categoryId="ownership_docs"
+          activeCategory={activeCategory}
+          resultsCategory={resultsCategory}
           title="Upload Documents"
           accept="application/pdf,image/*"
           tasks={ownershipDocs}
@@ -304,7 +399,7 @@ export default function StepMedia() {
           onEdit={handleEditDocs}
           progress={progress}
           isUploading={isUploading}
-          results={results} // ✅ PASSED FOR SPECIFIC ERROR MESSAGES
+          results={results}
         />
 
         {!isDocsUploaded && ownershipDocs.length > 0 && (
@@ -313,20 +408,10 @@ export default function StepMedia() {
             disabled={isUploading}
             className="w-full btn-primary py-2 text-sm font-semibold disabled:opacity-70 bg-amber-600 hover:bg-amber-700"
           >
-            {isUploading ? `Uploading Documents... ${progress}%` : "Upload Mandatory Documents"}
+            {isUploading && activeCategory === 'ownership_docs' ? `Uploading Documents... ${progress}%` : "Upload Mandatory Documents"}
           </button>
         )}
       </section>
-
-      {/* Wizard Navigation Hint */}
-      <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex items-start gap-3">
-        <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p className="text-sm text-blue-800">
-          <strong>Tip:</strong> Upload your gallery photos first, then hover over them and click <strong>"Set as Cover"</strong> to choose your main thumbnail. Once the required sections show the green success card, you can proceed to the final Publish step.
-        </p>
-      </div>
     </div>
   );
 }

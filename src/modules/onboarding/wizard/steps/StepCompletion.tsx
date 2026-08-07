@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation"; // ✅ 1. Import Next.js App Router
 import { useOnboardingWizardStore } from "@/store/onboardingWizard.store";
 import { useAuthStore } from "@/store/auth.store";
 import { profileApi } from "@/api/profile.api";
 
 export default function StepCompletion() {
-  // ✅ FIX: Removed `resetWizard` from destructuring.
-  // We no longer want to mutate the global UI state while this component is visible.
+  const router = useRouter(); // ✅ 2. Initialize the router
+  
   const { userRole, formData, setSubmitting, isSubmitting, error } =
     useOnboardingWizardStore();
 
@@ -43,34 +44,38 @@ export default function StepCompletion() {
         if (currentUser) {
           useAuthStore.getState().setUser({
             ...currentUser,
-            profile_complete: stateData.profile_complete,
+            // ✅ The backend reliably returns true here now
+            profile_complete: stateData.profile_complete, 
           });
         }
       }
 
-      // 4. ✅ FIX: Show success UI WITHOUT resetting the wizard state yet.
+      // 4. Show success UI WITHOUT resetting the wizard state yet.
       setIsSuccess(true);
 
-      // 5. ✅ FIX: Clear the persisted localStorage draft directly.
-      // This ensures the wizard is fresh for the next session without
-      // triggering a UI re-render that flashes Step 1.
+      // 5. Clear the persisted localStorage draft directly.
       if (typeof window !== "undefined") {
         localStorage.removeItem("tennacy-onboarding-draft");
       }
 
       // 6. Navigate to the correct destination
       setTimeout(() => {
-        let nextRoute = "/marketplace";
+        // ✅ Trust the backend's State Resolution Engine for the exact route
+        let nextRoute = stateData?.next_route || "/marketplace";
 
-        if (userRole === "landlord") {
-          nextRoute = "/properties/wizard";
+        // Fallback overrides just in case the backend route is generic
+        if (userRole === "landlord" && !stateData?.next_route?.includes("dashboard")) {
+          nextRoute = stateData?.next_route || "/properties/wizard";
         } else if (userRole === "agency") {
-          nextRoute = "/pending-verification";
+          nextRoute = stateData?.next_route || "/pending-verification";
         }
 
-        // Force full page reload to guarantee fresh state initialization
-        window.location.href = nextRoute;
+        // ✅ CRITICAL FIX: Use router.push for smooth, state-preserving navigation.
+        // This prevents the hard reload that was wiping the auth store and 
+        // triggering the onboarding guard trap.
+        router.push(nextRoute); 
       }, 2000); // 2 seconds to read the success message
+      
     } catch (err: any) {
       console.error("Onboarding submission failed:", err);
     } finally {
